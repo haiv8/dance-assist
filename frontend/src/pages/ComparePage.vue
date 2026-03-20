@@ -70,6 +70,9 @@
           <button :disabled="!teacherId || !userId || analyzing" @click="startAnalysis">
             {{ analyzing ? '分析进行中...' : '发起分析' }}
           </button>
+          <button class="ghost-button" :disabled="!canCancelCurrentPipeline || cancelingPipeline" @click="cancelCurrentPipeline">
+            {{ cancelingPipeline ? "\u53d6\u6d88\u4e2d..." : "\u53d6\u6d88\u5f53\u524d\u4efb\u52a1" }}
+          </button>
         </div>
 
         <div v-if="error" class="feedback-inline" style="margin-top: 12px;">{{ error }}</div>
@@ -261,6 +264,27 @@
               <li class="list-item-card"><strong>&#33410;&#22863; windows</strong><span class="helper-text">{{ tempoSegmentSummary }}</span></li>
             </ul>
           </article>
+          <article class="surface-card sub-card simple-card" v-if="problemHighlights.length">
+            <div class="panel-head compact-head">
+              <div>
+                <h3>Focus replay</h3>
+                <p class="helper-text">Click an issue to jump there and replay at 0.5x speed.</p>
+              </div>
+              <button class="secondary-button" type="button" @click="restoreNormalPlayback">1.0x</button>
+            </div>
+            <div class="focus-marker-list">
+              <button
+                v-for="marker in problemHighlights"
+                :key="`focus_${marker.frame}_${marker.type}`"
+                type="button"
+                class="focus-marker-item"
+                @click="focusMarker(marker)"
+              >
+                <strong>{{ markerLabel(marker.type) }} ? {{ Number(marker.sec).toFixed(2) }}s</strong>
+                <span class="helper-text">{{ markerFocusCopy(marker) }}</span>
+              </button>
+            </div>
+          </article>
         </div>
 
         <article class="surface-card sub-card simple-card" v-if="result.report?.beginner_report?.summary || result.report?.teaching_report?.summary" style="margin-top: 16px;">
@@ -304,9 +328,9 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import { absMediaUrl } from "../api/http";
-import { getPipelineFrameDetail, getPipelineResult, getPipelineResultSummary, getPipelineStatus, runPipeline } from "../api/pipelines";
+import { cancelPipeline, getPipelineFrameDetail, getPipelineFrameRange, getPipelineResult, getPipelineResultSummary, getPipelineStatus, runPipeline } from "../api/pipelines";
 import { listVideos } from "../api/videos";
-import type { PipelineResultResponse, PipelineRunResponse, PipelineStatusResponse, PipelineStatusType, VideoItem } from "../types/video";
+import type { PipelineFrameRangeResponse, PipelineResultResponse, PipelineRunResponse, PipelineStatusResponse, PipelineStatusType, VideoItem } from "../types/video";
 
 const route = useRoute();
 
@@ -322,10 +346,14 @@ const pipelineStatus = ref<PipelineStatusType | "">("");
 const pipelineStage = ref("");
 const pipelineProgress = ref(0);
 const pipelineMessage = ref("");
+const cancelRequested = ref(false);
+const cancelingPipeline = ref(false);
 const result = ref<PipelineResultResponse | null>(null);
 const analysisMode = ref<"overall" | "local">("overall");
 const frameDetailCache = ref<Record<number, Record<string, any>>>({});
 const frameDetailLoading = ref(false);
+const FRAME_WINDOW_RADIUS = 12;
+const REVIEW_PLAYBACK_RATE = 0.5;
 let pollTimer: number | null = null;
 
 const teacherItems = computed(() => items.value.filter((item) => item.role === "teacher"));
@@ -339,6 +367,10 @@ const userUrl = computed(() => (selectedUser.value ? absMediaUrl(selectedUser.va
 const pipelineStatusText = computed(() => pipelineStatusToText(pipelineStatus.value));
 const pipelineStageText = computed(() => stageToText(pipelineStage.value, pipelineStatus.value));
 const pipelineProgressPercent = computed(() => Math.round(Math.max(0, Math.min(1, pipelineProgress.value || 0)) * 100));
+const canCancelCurrentPipeline = computed(() => {
+  if (!pipelineId.value) return false;
+  return (pipelineStatus.value === "pending" || pipelineStatus.value === "running") && !cancelRequested.value;
+});
 const analysisHint = computed(() => {
   if (!teacherId.value || !userId.value) return "\u5148\u9009\u62e9\u6559\u5e08\u548c\u5b66\u5458\u7d20\u6750";
   if (analyzing.value || pipelineStatus.value === "pending" || pipelineStatus.value === "running") return "\u5206\u6790\u8fdb\u884c\u4e2d\uff0c\u7ed3\u679c\u4f1a\u81ea\u52a8\u5237\u65b0";
@@ -377,6 +409,16 @@ const markers = computed(() => {
   return list as Array<{ frame: number; sec: number; type: string; severity?: string }>;
 });
 const markerDots = computed(() => markers.value.map((item) => ({ ...item, leftPct: duration.value > 1e-6 ? Math.max(0, Math.min(100, (item.sec / duration.value) * 100)) : 0 })));
+const problemHighlights = computed(() => {
+  const severityRank: Record<string, number> = { severe: 3, clear: 2, mild: 1 };
+  return [...markerDots.value]
+    .sort((a, b) => {
+      const severityDelta = (severityRank[String(b.severity ?? "")] ?? 0) - (severityRank[String(a.severity ?? "")] ?? 0);
+      if (severityDelta !== 0) return severityDelta;
+      return Number(a.sec) - Number(b.sec);
+    })
+    .slice(0, 6);
+});
 
 const mapUserSecArr = computed<number[]>(() => Array.isArray(result.value?.timeline?.map_user_sec) ? result.value!.timeline!.map_user_sec.map((value: any) => Number(value)) : []);
 const teacherToUserArr = computed<number[]>(() => Array.isArray(result.value?.timeline?.teacher_to_user) ? result.value!.timeline!.teacher_to_user.map((value: any) => Number(value)) : []);
@@ -512,6 +554,7 @@ function pipelineStatusToText(status?: string) {
   if (status === "running") return "\u5206\u6790\u4e2d";
   if (status === "done") return "\u5df2\u5b8c\u6210";
   if (status === "failed") return "\u5931\u8d25";
+  if (status === "canceled") return "\u5df2\u53d6\u6d88";
   return status || "\u672a\u5f00\u59cb";
 }
 
@@ -524,21 +567,36 @@ function stageToText(stage?: string, status?: string) {
   if (stage === "packaging_results") return "\u6574\u7406\u7ed3\u679c";
   if (stage === "completed") return "\u7ed3\u679c\u5df2\u5c31\u7eea";
   if (stage === "failed") return "\u4efb\u52a1\u5931\u8d25";
+  if (stage === "canceled") return "\u4efb\u52a1\u5df2\u53d6\u6d88";
   return pipelineStatusToText(status);
 }
 
 function statusTagClass(status?: string) {
   if (status === "done") return "ok";
   if (status === "failed") return "danger";
+  if (status === "canceled") return "neutral";
   if (status === "running" || status === "pending") return "warn";
   return "";
 }
 
 function severityText(severity?: string) {
-  if (severity === "mild") return "轻度";
-  if (severity === "clear") return "明显";
-  if (severity === "severe") return "严重";
+  if (severity === "mild") return "Mild";
+  if (severity === "clear") return "Clear";
+  if (severity === "severe") return "Severe";
   return severity || "-";
+}
+
+function markerFocusCopy(marker: { sec: number; frame: number; type: string; severity?: string }) {
+  return `${markerLabel(marker.type)} | ${severityText(marker.severity)} | jump to ${Number(marker.sec).toFixed(2)}s and replay at 0.5x`;
+}
+
+function applyPlaybackRates(rate: number) {
+  if (teacherRef.value) teacherRef.value.playbackRate = rate;
+  if (userRef.value) userRef.value.playbackRate = rate;
+}
+
+function restoreNormalPlayback() {
+  applyPlaybackRates(1);
 }
 
 function stopSyncTimer() {
@@ -566,6 +624,9 @@ function applyPipelineMeta(meta?: Partial<PipelineRunResponse & PipelineStatusRe
   if (typeof meta.message === "string") {
     pipelineMessage.value = meta.message;
   }
+  if (typeof meta.cancel_requested === "boolean") {
+    cancelRequested.value = meta.cancel_requested;
+  }
 }
 
 function mapUserSec(teacherSec: number): number {
@@ -589,6 +650,7 @@ function syncLoop() {
   const teacher = teacherRef.value;
   const user = userRef.value;
   if (!teacher || !user) return;
+  const baseRate = teacher.playbackRate > 0 ? teacher.playbackRate : 1;
   const targetUserSec = mapUserSec(teacher.currentTime);
   const diff = targetUserSec - user.currentTime;
   filteredDiff = 0.7 * filteredDiff + 0.3 * diff;
@@ -597,12 +659,13 @@ function syncLoop() {
 
   if (absDiff > SYNC_SEEK_THRESHOLD_SEC && now - lastSeekAtMs >= SYNC_SEEK_COOLDOWN_MS) {
     user.currentTime = targetUserSec;
-    user.playbackRate = 1;
+    user.playbackRate = baseRate;
     lastSeekAtMs = now;
   } else if (absDiff <= SYNC_RATE_DEADZONE_SEC) {
-    user.playbackRate = 1;
+    user.playbackRate = baseRate;
   } else {
-    user.playbackRate = Math.max(SYNC_RATE_MIN, Math.min(SYNC_RATE_MAX, 1 + SYNC_RATE_GAIN * filteredDiff));
+    const nextRate = baseRate * (1 + SYNC_RATE_GAIN * filteredDiff);
+    user.playbackRate = Math.max(baseRate * SYNC_RATE_MIN, Math.min(baseRate * SYNC_RATE_MAX, nextRate));
   }
 
   currentTime.value = teacher.currentTime;
@@ -633,7 +696,7 @@ async function onTeacherPlay() {
   analysisMode.value = "overall";
   if (userRef.value) {
     userRef.value.currentTime = mapUserSec(teacherRef.value?.currentTime ?? 0);
-    userRef.value.playbackRate = 1;
+    userRef.value.playbackRate = teacherRef.value?.playbackRate || 1;
     try {
       await userRef.value.play();
     } catch {
@@ -685,7 +748,7 @@ function seekBoth(target: number) {
   teacher.currentTime = teacherSec;
   if (userRef.value) {
     userRef.value.currentTime = mapUserSec(teacherSec);
-    userRef.value.playbackRate = 1;
+    userRef.value.playbackRate = teacher.playbackRate || 1;
     if (!teacher.paused) void userRef.value.play().catch(() => {});
   }
   lastSeekAtMs = Date.now();
@@ -731,6 +794,21 @@ function seekToMarker(sec: number, frame?: number) {
     return;
   }
   seekBoth(sec);
+}
+
+async function focusMarker(marker: { sec: number; frame: number; type: string; severity?: string }) {
+  const targetFrame = Number.isFinite(Number(marker.frame)) ? Number(marker.frame) : Math.round(Number(marker.sec) * fpsTeacher.value);
+  seekToMarker(marker.sec, marker.frame);
+  analysisMode.value = "local";
+  await ensureFrameWindow(targetFrame, FRAME_WINDOW_RADIUS);
+  applyPlaybackRates(REVIEW_PLAYBACK_RATE);
+  if (teacherRef.value?.paused) {
+    try {
+      await teacherRef.value.play();
+    } catch {
+      // ignore
+    }
+  }
 }
 
 function jumpPrevMarker() {
@@ -822,7 +900,7 @@ async function pollStatus(id: string) {
   try {
     const status = await getPipelineStatus(id);
     applyPipelineMeta(status);
-    if (status.status === "done" || status.status === "failed") {
+    if (status.status === "done" || status.status === "failed" || status.status === "canceled") {
       stopPolling();
       analyzing.value = false;
       try {
@@ -849,6 +927,7 @@ async function startAnalysis() {
   pipelineMessage.value = "";
   pipelineStage.value = "queued";
   pipelineProgress.value = 0;
+  cancelRequested.value = false;
   error.value = "";
   try {
     const response = await runPipeline({ teacher_video_id: teacherId.value, user_video_id: userId.value, overwrite: overwrite.value });
@@ -859,13 +938,64 @@ async function startAnalysis() {
     await pollStatus(response.pipeline_id);
   } catch (e: any) {
     analyzing.value = false;
-    error.value = e?.response?.data?.detail ?? e?.message ?? "流程启动失败";
+    error.value = e?.response?.data?.detail ?? e?.message ?? "\u6d41\u7a0b\u542f\u52a8\u5931\u8d25";
+  }
+}
+
+async function cancelCurrentPipeline() {
+  if (!pipelineId.value || !canCancelCurrentPipeline.value) return;
+  cancelingPipeline.value = true;
+  error.value = "";
+  try {
+    const status = await cancelPipeline(pipelineId.value);
+    applyPipelineMeta(status);
+    if (status.status === "canceled") {
+      analyzing.value = false;
+      stopPolling();
+    }
+  } catch (e: any) {
+    error.value = e?.response?.data?.detail ?? e?.message ?? "\u53d6\u6d88\u4efb\u52a1\u5931\u8d25";
+  } finally {
+    cancelingPipeline.value = false;
+  }
+}
+
+async function ensureFrameWindow(frame: number | null, radius = FRAME_WINDOW_RADIUS) {
+  if (frame === null || !pipelineId.value || frameAnalysisCount.value <= 0) return;
+  if (Array.isArray(result.value?.report?.frame_analysis)) return;
+
+  const start = Math.max(0, frame - radius);
+  const end = Math.min(frameAnalysisCount.value - 1, frame + radius);
+  let needsLoad = false;
+  for (let index = start; index <= end; index += 1) {
+    if (!frameDetailCache.value[index]) {
+      needsLoad = true;
+      break;
+    }
+  }
+  if (!needsLoad) return;
+
+  frameDetailLoading.value = true;
+  try {
+    const range: PipelineFrameRangeResponse = await getPipelineFrameRange(pipelineId.value, {
+      start_frame: start,
+      end_frame: end,
+    });
+    const nextCache = { ...frameDetailCache.value };
+    for (const item of range.items) {
+      if (item.frame_analysis) nextCache[item.frame] = item.frame_analysis;
+    }
+    frameDetailCache.value = nextCache;
+  } finally {
+    frameDetailLoading.value = false;
   }
 }
 
 async function ensureFrameDetail(frame: number | null) {
-  if (frame === null || !pipelineId.value || frameDetailCache.value[frame]) return;
-  if (Array.isArray(result.value?.report?.frame_analysis)) return;
+  if (frame === null) return;
+  if (frameDetailCache.value[frame]) return;
+  await ensureFrameWindow(frame, 2);
+  if (frameDetailCache.value[frame] || !pipelineId.value || Array.isArray(result.value?.report?.frame_analysis)) return;
   frameDetailLoading.value = true;
   try {
     const detail = await getPipelineFrameDetail(pipelineId.value, frame);
@@ -886,6 +1016,7 @@ watch([displayTeacherUrl, displayUserUrl], () => {
   duration.value = 0;
   pendingSeekSec.value = null;
   filteredDiff = 0;
+  restoreNormalPlayback();
   stopSyncTimer();
 });
 watch([teacherMuted, userMuted], applyMuteState);
@@ -899,10 +1030,12 @@ watch([teacherId, userId], () => {
   pipelineStage.value = "";
   pipelineProgress.value = 0;
   pipelineMessage.value = "";
+  cancelRequested.value = false;
   routeSeekSec.value = null;
 });
 watch([analysisMode, currentFrameIndex, result], ([mode, frame]) => {
   if (mode !== "local") return;
+  void ensureFrameWindow(frame);
   void ensureFrameDetail(frame);
 });
 watch(
@@ -955,6 +1088,30 @@ onBeforeUnmount(() => {
 
 .summary-row span {
   color: var(--muted);
+}
+
+.focus-marker-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.focus-marker-item {
+  width: 100%;
+  text-align: left;
+  border: 1px solid rgba(226, 109, 61, 0.16);
+  background: rgba(255, 247, 242, 0.9);
+  border-radius: 14px;
+  padding: 12px 14px;
+  display: grid;
+  gap: 6px;
+  transition: transform 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease;
+}
+
+.focus-marker-item:hover {
+  transform: translateY(-1px);
+  border-color: rgba(226, 109, 61, 0.32);
+  box-shadow: 0 14px 28px rgba(226, 109, 61, 0.12);
 }
 
 .summary-row strong {

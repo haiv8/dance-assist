@@ -30,7 +30,7 @@ export interface VideoActionResponse {
   item?: VideoItem | null;
 }
 
-export type PipelineStatusType = "pending" | "running" | "done" | "failed";
+export type PipelineStatusType = "pending" | "running" | "done" | "failed" | "canceled";
 
 export interface PipelineRunRequest {
   teacher_video_id: string;
@@ -49,6 +49,8 @@ export interface PipelineRunResponse {
   error_type?: string | null;
   stage?: string | null;
   progress?: number | null;
+  cancel_requested?: boolean | null;
+  cancel_requested_at?: string | null;
 }
 
 export interface PipelineStatusResponse {
@@ -65,6 +67,8 @@ export interface PipelineStatusResponse {
   error_type?: string | null;
   stage?: string | null;
   progress?: number | null;
+  cancel_requested?: boolean | null;
+  cancel_requested_at?: string | null;
 }
 
 export interface PipelineResultResponse {
@@ -80,6 +84,8 @@ export interface PipelineResultResponse {
   error_type?: string | null;
   stage?: string | null;
   progress?: number | null;
+  cancel_requested?: boolean | null;
+  cancel_requested_at?: string | null;
   report?: Record<string, any> | null;
   timeline?: Record<string, any> | null;
   files?: Record<string, string> | null;
@@ -98,6 +104,8 @@ export interface PipelineResultSummaryResponse {
   error_type?: string | null;
   stage?: string | null;
   progress?: number | null;
+  cancel_requested?: boolean | null;
+  cancel_requested_at?: string | null;
   report?: Record<string, any> | null;
   timeline?: Record<string, any> | null;
   files?: Record<string, string> | null;
@@ -109,6 +117,23 @@ export interface PipelineFrameDetailResponse {
   status: PipelineStatusType;
   frame: number;
   frame_analysis?: Record<string, any> | null;
+}
+
+export interface PipelineFrameRangeItem {
+  frame: number;
+  sec?: number | null;
+  frame_analysis?: Record<string, any> | null;
+}
+
+export interface PipelineFrameRangeResponse {
+  pipeline_id: string;
+  pair_name: string;
+  status: PipelineStatusType;
+  start_frame: number;
+  end_frame: number;
+  total: number;
+  fps_teacher?: number | null;
+  items: PipelineFrameRangeItem[];
 }
 
 
@@ -130,6 +155,8 @@ export interface PipelineTaskListItem {
   updated_at?: string | null;
   score_total?: number | null;
   confidence_score?: number | null;
+  cancel_requested?: boolean | null;
+  cancel_requested_at?: string | null;
 }
 
 export interface PipelineTaskListResponse {

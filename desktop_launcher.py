@@ -5,6 +5,7 @@ import atexit
 import functools
 import http.server
 import json
+from io import BytesIO
 import os
 import shutil
 import socket
@@ -27,13 +28,178 @@ import uvicorn
 HOST = "127.0.0.1"
 API_PORT = 8000
 WEB_PORT = 4173
+LOADING_ROUTE = "/__launcher__/loading"
+
+
+def _launcher_loading_html() -> str:
+    api_url = f"http://{HOST}:{API_PORT}/health"
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Dance Assist is starting</title>
+  <style>
+    :root {{
+      color-scheme: light;
+      --bg: #eef3f8;
+      --panel: rgba(255,255,255,0.88);
+      --ink: #142033;
+      --muted: #627086;
+      --accent: #de6d3d;
+      --accent-soft: rgba(222,109,61,0.14);
+      --line: rgba(20,32,51,0.08);
+    }}
+    * {{ box-sizing: border-box; }}
+    body {{
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top left, rgba(222,109,61,0.18), transparent 34%),
+        radial-gradient(circle at bottom right, rgba(20,32,51,0.10), transparent 38%),
+        linear-gradient(180deg, #f6f8fb 0%, var(--bg) 100%);
+    }}
+    .panel {{
+      width: min(560px, calc(100vw - 40px));
+      padding: 30px 30px 26px;
+      border-radius: 24px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      box-shadow: 0 24px 80px rgba(20,32,51,0.12);
+      backdrop-filter: blur(12px);
+    }}
+    .eyebrow {{
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+    }}
+    .dot {{
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      background: var(--accent);
+      box-shadow: 0 0 0 0 rgba(222,109,61,0.45);
+      animation: pulse 1.5s infinite;
+    }}
+    h1 {{ margin: 20px 0 10px; font-size: 30px; line-height: 1.15; }}
+    p {{ margin: 0; color: var(--muted); line-height: 1.7; }}
+    .status {{ margin-top: 20px; font-size: 15px; color: var(--ink); font-weight: 600; }}
+    .progress {{
+      margin-top: 18px;
+      width: 100%;
+      height: 12px;
+      border-radius: 999px;
+      overflow: hidden;
+      background: rgba(20,32,51,0.08);
+      position: relative;
+    }}
+    .progress::after {{
+      content: "";
+      position: absolute;
+      inset: 0;
+      width: 38%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, #f19a67 0%, #de6d3d 100%);
+      animation: slide 1.3s ease-in-out infinite;
+    }}
+    .tips {{
+      margin-top: 18px;
+      display: grid;
+      gap: 10px;
+      color: var(--muted);
+      font-size: 14px;
+    }}
+    code {{
+      font-family: Consolas, monospace;
+      padding: 2px 6px;
+      border-radius: 8px;
+      background: rgba(20,32,51,0.06);
+      color: var(--ink);
+    }}
+    @keyframes slide {{
+      0% {{ transform: translateX(-110%); }}
+      100% {{ transform: translateX(320%); }}
+    }}
+    @keyframes pulse {{
+      0% {{ box-shadow: 0 0 0 0 rgba(222,109,61,0.45); }}
+      70% {{ box-shadow: 0 0 0 10px rgba(222,109,61,0); }}
+      100% {{ box-shadow: 0 0 0 0 rgba(222,109,61,0); }}
+    }}
+  </style>
+</head>
+<body>
+  <main class="panel">
+    <div class="eyebrow"><span class="dot"></span><span>Dance Assist launcher</span></div>
+    <h1>Warming up your workspace</h1>
+    <p>The desktop shell is ready. Backend services are starting in the background, and the app will open automatically as soon as the health check passes.</p>
+    <div id="status" class="status">Checking backend status...</div>
+    <div class="progress"></div>
+    <div class="tips">
+      <div>Startup path: <code>static shell -> local services -> API health check -> app</code></div>
+      <div>If this page stays here for too long, check whether local PostgreSQL or Redis is still starting.</div>
+    </div>
+  </main>
+  <script>
+    const statusEl = document.getElementById('status');
+    const apiUrl = {api_url!r};
+    const appUrl = '/';
+    let attempts = 0;
+
+    async function pollReady() {{
+      attempts += 1;
+      try {{
+        const resp = await fetch(apiUrl, {{ cache: 'no-store' }});
+        if (resp.ok) {{
+          statusEl.textContent = 'Backend is ready. Opening Dance Assist...';
+          window.location.replace(appUrl);
+          return;
+        }}
+      }} catch (err) {{
+        // keep waiting
+      }}
+      statusEl.textContent = attempts < 6
+        ? 'Starting local backend services...'
+        : 'Still warming up the backend. This can take a little longer on the first launch.';
+      window.setTimeout(pollReady, 800);
+    }}
+
+    pollReady();
+  </script>
+</body>
+</html>
+"""
 
 
 class QuietStaticHandler(http.server.SimpleHTTPRequestHandler):
     def log_message(self, format: str, *args):
         return
 
+    def _normalized_path(self) -> str:
+        return self.path.split('?', 1)[0].split('#', 1)[0]
+
+    def _send_bytes(self, body: bytes, content_type: str = 'text/html; charset=utf-8'):
+        self.send_response(200)
+        self.send_header('Content-Type', content_type)
+        self.send_header('Content-Length', str(len(body)))
+        self.send_header('Cache-Control', 'no-store')
+        self.end_headers()
+        return BytesIO(body)
+
     def send_head(self):
+        if self._normalized_path() == LOADING_ROUTE:
+            return self._send_bytes(_launcher_loading_html().encode('utf-8'))
+
         path = self.translate_path(self.path)
         requested = Path(path)
         if requested.exists() or requested.suffix:
@@ -51,6 +217,11 @@ def _root_dir() -> Path:
     if getattr(sys, "frozen", False):
         return Path(sys.executable).resolve().parent
     return Path(__file__).resolve().parent
+
+
+def _log_phase(message: str) -> None:
+    stamp = time.strftime('%H:%M:%S')
+    print(f'[{stamp}] {message}')
 
 
 def _is_port_open(host: str, port: int) -> bool:
@@ -72,22 +243,17 @@ def _start_local_postgres(root: Path) -> bool:
     if _is_port_open(HOST, 5432):
         return False
 
-    pg_root = root / ".runtime" / "pgsql" / "pgsql"
-    pg_ctl = pg_root / "bin" / "pg_ctl.exe"
-    data_dir = pg_root / "data"
-    log_file = pg_root / "postgres.log"
-    if not pg_ctl.exists() or not data_dir.exists():
+    start_script = root / "scripts" / "start-local-postgres.ps1"
+    if not start_script.exists():
         return False
 
     cmd = [
-        str(pg_ctl),
-        "-D",
-        str(data_dir),
-        "-l",
-        str(log_file),
-        "-o",
-        "-p 5432 -h 127.0.0.1",
-        "start",
+        "powershell",
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        str(start_script),
     ]
     subprocess.run(cmd, check=False, capture_output=True, text=True)
     return _wait_port(HOST, 5432, timeout_sec=15)
@@ -220,6 +386,30 @@ def _start_local_redis(root: Path) -> subprocess.Popen[str] | None:
             process.kill()
         return None
     return process
+
+
+def _start_local_services(root: Path) -> tuple[bool, subprocess.Popen[str] | None]:
+    results: dict[str, object] = {
+        'postgres_started': False,
+        'redis_process': None,
+    }
+
+    def _boot_postgres() -> None:
+        results['postgres_started'] = _start_local_postgres(root)
+
+    def _boot_redis() -> None:
+        results['redis_process'] = _start_local_redis(root)
+
+    workers = [
+        threading.Thread(target=_boot_postgres, daemon=True),
+        threading.Thread(target=_boot_redis, daemon=True),
+    ]
+    for worker in workers:
+        worker.start()
+    for worker in workers:
+        worker.join()
+
+    return bool(results['postgres_started']), results['redis_process'] if isinstance(results['redis_process'], subprocess.Popen) else None
 
 
 def _expected_app_home(root: Path) -> Path:
@@ -369,11 +559,19 @@ def main() -> int:
     args = _parse_args()
     root = _root_dir()
     _prepare_runtime_env(root)
-    postgres_started = _start_local_postgres(root)
-    redis_process = _start_local_redis(root)
-    redis_worker = _start_redis_pipeline_worker(root)
-    backend_server, _ = _start_backend(root)
+
+    _log_phase('Starting desktop shell...')
     static_server, _ = _start_static_server(root)
+    if not _wait_port(HOST, WEB_PORT, timeout_sec=5):
+        print(f"[ERROR] Frontend shell not ready on {HOST}:{WEB_PORT}")
+        return 1
+
+    _log_phase('Warming local services...')
+    postgres_started, redis_process = _start_local_services(root)
+    redis_worker = _start_redis_pipeline_worker(root)
+
+    _log_phase('Booting backend...')
+    backend_server, _ = _start_backend(root)
 
     def _cleanup() -> None:
         if static_server is not None:
@@ -398,34 +596,35 @@ def main() -> int:
 
     atexit.register(_cleanup)
 
-    if not _wait_port(HOST, API_PORT, timeout_sec=25):
-        print(f"[ERROR] Backend not ready on {HOST}:{API_PORT}")
-        return 1
-    if not _wait_port(HOST, WEB_PORT, timeout_sec=10):
-        print(f"[ERROR] Frontend not ready on {HOST}:{WEB_PORT}")
-        return 1
+    app_url = f"http://{HOST}:{WEB_PORT}"
+    launch_url = app_url if _is_port_open(HOST, API_PORT) else f"{app_url}{LOADING_ROUTE}"
 
-    url = f"http://{HOST}:{WEB_PORT}"
-    print(f"[OK] Dance Assist started: {url}")
+    def _announce_ready() -> None:
+        if _wait_port(HOST, API_PORT, timeout_sec=25):
+            _log_phase(f'Dance Assist is ready: {app_url}')
+        else:
+            _log_phase('Backend warm-up is taking longer than expected.')
+
+    threading.Thread(target=_announce_ready, daemon=True).start()
 
     if args.mode == "browser":
-        webbrowser.open(url, new=2)
-        print("Browser debug mode started. Keep this window open. Press Ctrl+C to stop.")
+        webbrowser.open(launch_url, new=2)
+        _log_phase('Browser mode started. Keep this window open to keep services alive.')
     elif args.mode == "desktop":
         try:
-            if _open_desktop_window(url, strict=True):
-                print("Desktop window closed.")
+            if _open_desktop_window(launch_url, strict=True):
+                _log_phase('Desktop window closed.')
                 return 0
         except Exception as exc:
             print(f"[ERROR] Desktop mode requested but unavailable: {exc}")
             print("Install desktop dependencies in .venv, for example: pywebview and pythonnet.")
             return 1
-    elif _open_desktop_window(url, strict=False):
-        print("Desktop window closed.")
+    elif _open_desktop_window(launch_url, strict=False):
+        _log_phase('Desktop window closed.')
         return 0
     else:
-        webbrowser.open(url, new=2)
-        print("Embedded window unavailable. Browser mode started instead. Keep this window open. Press Ctrl+C to stop.")
+        webbrowser.open(launch_url, new=2)
+        _log_phase('Embedded window unavailable. Browser mode started instead. Keep this window open.')
 
     try:
         while True:

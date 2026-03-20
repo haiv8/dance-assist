@@ -428,6 +428,7 @@ function stageText(stage?: string | null) {
   if (stage === "packaging_results") return "\u6574\u7406\u7ed3\u679c";
   if (stage === "completed") return "\u7ed3\u679c\u5df2\u5c31\u7eea";
   if (stage === "failed") return "\u4efb\u52a1\u5931\u8d25";
+  if (stage === "canceled") return "\u4efb\u52a1\u5df2\u53d6\u6d88";
   return "\u5df2\u5b8c\u6210";
 }
 

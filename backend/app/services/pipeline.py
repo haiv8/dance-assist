@@ -20,9 +20,21 @@ from app.services.task_store import (
     list_analysis_reports as load_analysis_report_summaries,
     list_task_summaries as load_task_summaries,
     load_analysis_report_record,
+    load_frame_analysis_range as load_frame_analysis_range_records,
     load_task_record,
     save_pipeline_event,
     save_task_record,
+)
+from app.services.pipeline_views import (
+    analysis_report_fallback_item,
+    analysis_report_payload_from_summary,
+    pipeline_frame_detail_payload,
+    pipeline_frame_range_payload,
+    pipeline_result_payload,
+    pipeline_result_summary_payload,
+    pipeline_status_payload,
+    resolve_frame_window,
+    task_summary,
 )
 from app.settings import settings
 
@@ -121,6 +133,55 @@ def _record_pipeline_event(
     )
 
 
+def _is_cancel_requested(task: dict[str, Any] | None) -> bool:
+    if not isinstance(task, dict):
+        return False
+    if str(task.get("status", "")).strip() == "canceled":
+        return True
+    return bool(task.get("cancel_requested"))
+
+
+def _mark_task_canceled(
+    pipeline_id: str,
+    *,
+    executor: str | None = None,
+    message: str = "pipeline canceled by user",
+) -> dict[str, Any]:
+    existing = _load_task_from_storage(pipeline_id) or {}
+    cancel_requested_at = existing.get("cancel_requested_at") or _utc_now()
+    task = _set_task(
+        pipeline_id,
+        {
+            "status": "canceled",
+            "stage": "canceled",
+            "message": message,
+            "finished_at": existing.get("finished_at") or _utc_now(),
+            "executor": executor or existing.get("executor"),
+            "error_type": "canceled",
+            "cancel_requested": True,
+            "cancel_requested_at": cancel_requested_at,
+        },
+    )
+    if str(existing.get("status", "")).strip() != "canceled":
+        _record_pipeline_event(
+            pipeline_id,
+            "canceled",
+            status="canceled",
+            message=message,
+            executor=executor or str(existing.get("executor", "")).strip() or None,
+            payload={"cancel_requested_at": cancel_requested_at},
+        )
+    return task
+
+
+def _cancel_if_requested(pipeline_id: str, *, executor: str | None = None) -> bool:
+    task = _load_task_from_storage(pipeline_id)
+    if not _is_cancel_requested(task):
+        return False
+    _mark_task_canceled(pipeline_id, executor=executor)
+    return True
+
+
 def _set_task(pipeline_id: str, patch: dict[str, Any]) -> dict[str, Any]:
     with _TASK_LOCK:
         old = _TASKS.get(pipeline_id)
@@ -153,112 +214,6 @@ def _get_task(pipeline_id: str) -> dict[str, Any]:
         return task
 
     raise HTTPException(status_code=404, detail=f"pipeline not found: {pipeline_id}")
-
-
-def _task_pair_name(task: dict[str, Any]) -> str:
-    pair_name = task.get("pair_name")
-    if isinstance(pair_name, str) and pair_name.strip():
-        return pair_name
-
-    report = task.get("report")
-    if isinstance(report, dict):
-        report_pair_name = report.get("pair_name")
-        if isinstance(report_pair_name, str) and report_pair_name.strip():
-            return report_pair_name
-
-    files = task.get("files")
-    if isinstance(files, dict):
-        for key in ("report_url", "timeline_json_url", "timeline_npz_url"):
-            value = files.get(key)
-            if not isinstance(value, str):
-                continue
-            parts = value.strip("/").split("/")
-            if len(parts) >= 2 and parts[0] == "artifacts" and parts[1]:
-                return parts[1]
-
-    return f"pipeline_{task.get('pipeline_id', 'unknown')}"
-
-
-def _task_status(task: dict[str, Any]) -> str:
-    status = task.get("status")
-    if isinstance(status, str) and status in {"pending", "running", "done", "failed"}:
-        return status
-    return "pending"
-
-
-def _task_stage(task: dict[str, Any]) -> str:
-    stage = task.get("stage")
-    if isinstance(stage, str) and stage.strip():
-        return stage
-    status = _task_status(task)
-    fallback = {
-        "pending": "queued",
-        "running": "processing",
-        "done": "completed",
-        "failed": "failed",
-    }
-    return fallback.get(status, "queued")
-
-
-def _task_score_total(task: dict[str, Any]) -> float | None:
-    report = task.get("report")
-    if isinstance(report, dict):
-        raw = report.get("score_0_100")
-        if raw is None:
-            scores = report.get("scores")
-            if isinstance(scores, dict):
-                raw = scores.get("score_total")
-        try:
-            value = float(raw)
-        except Exception:
-            return None
-        return value if np.isfinite(value) else None
-    return None
-
-
-def _task_confidence_score(task: dict[str, Any]) -> float | None:
-    report = task.get("report")
-    if isinstance(report, dict):
-        confidence = report.get("confidence")
-        if isinstance(confidence, dict):
-            try:
-                value = float(confidence.get("score"))
-            except Exception:
-                return None
-            return value if np.isfinite(value) else None
-    return None
-
-
-def _task_summary(task: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "pipeline_id": str(task.get("pipeline_id", "") or ""),
-        "pair_name": _task_pair_name(task),
-        "status": _task_status(task),
-        "stage": _task_stage(task),
-        "progress": _task_progress(task),
-        "teacher_video_id": task.get("teacher_video_id"),
-        "user_video_id": task.get("user_video_id"),
-        "executor": task.get("executor"),
-        "attempt_count": task.get("attempt_count"),
-        "retry_count": task.get("retry_count"),
-        "error_type": task.get("error_type"),
-        "queued_at": task.get("queued_at"),
-        "started_at": task.get("started_at"),
-        "finished_at": task.get("finished_at"),
-        "updated_at": task.get("updated_at"),
-        "score_total": _task_score_total(task),
-        "confidence_score": _task_confidence_score(task),
-    }
-
-
-def _task_progress(task: dict[str, Any]) -> float:
-    try:
-        progress = float(task.get("progress"))
-    except Exception:
-        progress = 0.0
-    if not np.isfinite(progress):
-        progress = 0.0
-    return float(np.clip(progress, 0.0, 1.0))
 
 
 def _update_task_progress(
@@ -391,6 +346,9 @@ def _pipeline_worker(
     resolved_executor = executor_backend or get_pipeline_executor_backend()
 
     try:
+        if _cancel_if_requested(pipeline_id, executor=resolved_executor):
+            return False
+
         _update_task_progress(
             pipeline_id,
             stage="preparing_inputs",
@@ -435,6 +393,9 @@ def _pipeline_worker(
         t_video = _prepare_video(t_src, standard_dir / f"{teacher_stem}.mp4", overwrite=overwrite)
         u_video = _prepare_video(u_src, user_dir / f"{user_stem}.mp4", overwrite=overwrite)
 
+        if _cancel_if_requested(pipeline_id, executor=resolved_executor):
+            return False
+
         _update_task_progress(
             pipeline_id,
             stage="extracting_pose",
@@ -463,6 +424,9 @@ def _pipeline_worker(
             overwrite=overwrite,
         )
 
+        if _cancel_if_requested(pipeline_id, executor=resolved_executor):
+            return False
+
         _update_task_progress(
             pipeline_id,
             stage="aligning_motion",
@@ -479,6 +443,9 @@ def _pipeline_worker(
         t_overlay = pair_dir / f"{teacher_stem}_overlay_h264.mp4"
         u_overlay = pair_dir / f"{user_stem}_overlay_h264.mp4"
 
+        if _cancel_if_requested(pipeline_id, executor=resolved_executor):
+            return False
+
         _update_task_progress(
             pipeline_id,
             stage="rendering_outputs",
@@ -493,6 +460,9 @@ def _pipeline_worker(
         report_path = pair_dir / "report.json"
         timeline_json = pair_dir / "timeline.json"
         timeline_npz = pair_dir / "timeline.npz"
+
+        if _cancel_if_requested(pipeline_id, executor=resolved_executor):
+            return False
 
         _update_task_progress(
             pipeline_id,
@@ -589,6 +559,45 @@ def _pipeline_worker(
         return False
 
 
+def request_pipeline_cancel(pipeline_id: str) -> dict[str, Any]:
+    task = _get_task(pipeline_id)
+    status = str(task.get("status", "")).strip()
+    if status in {"done", "failed", "canceled"}:
+        return pipeline_status_payload(task, pipeline_id)
+
+    if _is_cancel_requested(task):
+        return pipeline_status_payload(task, pipeline_id)
+
+    cancel_requested_at = _utc_now()
+    executor = str(task.get("executor", "")).strip() or None
+    if status == "pending":
+        task = _mark_task_canceled(
+            pipeline_id,
+            executor=executor,
+            message="pipeline canceled before execution started",
+        )
+        return pipeline_status_payload(task, pipeline_id)
+
+    task = _set_task(
+        pipeline_id,
+        {
+            "cancel_requested": True,
+            "cancel_requested_at": cancel_requested_at,
+            "message": "cancel requested, waiting for current step to finish",
+            "error_type": "canceled",
+        },
+    )
+    _record_pipeline_event(
+        pipeline_id,
+        "cancel_requested",
+        status=status or "running",
+        message="cancel requested by user",
+        executor=executor,
+        payload={"cancel_requested_at": cancel_requested_at},
+    )
+    return pipeline_status_payload(task, pipeline_id)
+
+
 def run_pipeline(teacher_video_id: str, user_video_id: str, overwrite: bool = False) -> dict[str, Any]:
     teacher_meta = get_video_meta(teacher_video_id, role="teacher")
     user_meta = get_video_meta(user_video_id, role="user")
@@ -617,6 +626,8 @@ def run_pipeline(teacher_video_id: str, user_video_id: str, overwrite: bool = Fa
             "report": None,
             "timeline": None,
             "files": None,
+            "cancel_requested": False,
+            "cancel_requested_at": None,
         },
     )
     _record_pipeline_event(
@@ -683,7 +694,7 @@ def list_pipeline_tasks(limit: int = 50, status: str | None = None) -> dict[str,
             task = _load_task_from_storage(pipeline_id)
             if not task:
                 continue
-            summary = _task_summary(task)
+            summary = task_summary(task)
             if normalized_status and summary["status"] != normalized_status:
                 continue
             fallback_items.append(summary)
@@ -727,26 +738,7 @@ def list_analysis_reports(
                 task = _get_task(item.get("pipeline_id", ""))
             except HTTPException:
                 continue
-            report = task.get("report") if isinstance(task.get("report"), dict) else {}
-            confidence = report.get("confidence") if isinstance(report, dict) else {}
-            recommendations = report.get("recommendations") if isinstance(report, dict) else {}
-            beginner_report = report.get("beginner_report") if isinstance(report, dict) else {}
-            teaching_report = report.get("teaching_report") if isinstance(report, dict) else {}
-            scores = report.get("scores") if isinstance(report, dict) else {}
-            fallback_items.append(
-                {
-                    **item,
-                    "score_pose": scores.get("score_pose") if isinstance(scores, dict) else None,
-                    "score_tempo": scores.get("score_tempo") if isinstance(scores, dict) else None,
-                    "confidence_level": confidence.get("level") if isinstance(confidence, dict) else None,
-                    "overall_advice": recommendations.get("overall") if isinstance(recommendations, dict) else None,
-                    "confidence_summary": confidence.get("summary") if isinstance(confidence, dict) else None,
-                    "beginner_summary": beginner_report.get("summary") if isinstance(beginner_report, dict) else None,
-                    "teaching_summary": teaching_report.get("summary") if isinstance(teaching_report, dict) else None,
-                    "top_joints": report.get("top_joints") if isinstance(report.get("top_joints"), list) else [],
-                    "files": task.get("files") if isinstance(task.get("files"), dict) else {},
-                }
-            )
+            fallback_items.append(analysis_report_fallback_item(item, task))
         items = fallback_items
 
     return {
@@ -765,153 +757,75 @@ def get_analysis_report(pipeline_id: str) -> dict[str, Any]:
         return detail
 
     summary = get_pipeline_result_summary(pipeline_id)
-    report = summary.get("report") if isinstance(summary.get("report"), dict) else {}
-    confidence = report.get("confidence") if isinstance(report, dict) else {}
-    recommendations = report.get("recommendations") if isinstance(report, dict) else {}
-    beginner_report = report.get("beginner_report") if isinstance(report, dict) else {}
-    teaching_report = report.get("teaching_report") if isinstance(report, dict) else {}
-    scores = report.get("scores") if isinstance(report, dict) else {}
-    return {
-        **summary,
-        "teacher_video_id": None,
-        "user_video_id": None,
-        "score_total": _task_score_total({"report": report}),
-        "score_pose": scores.get("score_pose") if isinstance(scores, dict) else None,
-        "score_tempo": scores.get("score_tempo") if isinstance(scores, dict) else None,
-        "confidence_score": _task_confidence_score({"report": report}),
-        "confidence_level": confidence.get("level") if isinstance(confidence, dict) else None,
-        "overall_advice": recommendations.get("overall") if isinstance(recommendations, dict) else None,
-        "confidence_summary": confidence.get("summary") if isinstance(confidence, dict) else None,
-        "beginner_summary": beginner_report.get("summary") if isinstance(beginner_report, dict) else None,
-        "teaching_summary": teaching_report.get("summary") if isinstance(teaching_report, dict) else None,
-        "top_joints": report.get("top_joints") if isinstance(report.get("top_joints"), list) else [],
-    }
+    return analysis_report_payload_from_summary(summary)
 
 
 def get_pipeline_status(pipeline_id: str) -> dict[str, Any]:
     task = _get_task(pipeline_id)
-    return {
-        "pipeline_id": task.get("pipeline_id", pipeline_id),
-        "pair_name": _task_pair_name(task),
-        "status": _task_status(task),
-        "message": task.get("message"),
-        "queued_at": task.get("queued_at"),
-        "started_at": task.get("started_at"),
-        "finished_at": task.get("finished_at"),
-        "updated_at": task.get("updated_at"),
-        "executor": task.get("executor"),
-        "attempt_count": task.get("attempt_count"),
-        "retry_count": task.get("retry_count"),
-        "error_type": task.get("error_type"),
-        "stage": _task_stage(task),
-        "progress": _task_progress(task),
-    }
-
-
-def _summarize_report(report: dict | None) -> dict | None:
-    if not isinstance(report, dict):
-        return report
-
-    out = {k: v for k, v in report.items() if k != "frame_analysis"}
-    rows = report.get("frame_analysis")
-    if isinstance(rows, list):
-        out["frame_analysis_count"] = len(rows)
-    return out
-
-
-def _summarize_timeline(timeline: dict | None) -> dict | None:
-    if not isinstance(timeline, dict):
-        return timeline
-
-    out: dict[str, Any] = {}
-    heavy_arrays = {"map_user_sec", "teacher_to_user", "frame_quality"}
-    marker_arrays = {"marker_frames", "marker_types"}
-
-    for k, v in timeline.items():
-        if k in heavy_arrays and isinstance(v, list):
-            out[f"{k}_count"] = len(v)
-            if v:
-                out[f"{k}_preview"] = [v[0], v[min(len(v) - 1, len(v) // 2)], v[-1]]
-            continue
-
-        if k in marker_arrays and isinstance(v, list):
-            out[f"{k}_count"] = len(v)
-            out[k] = v[:200]
-            continue
-
-        out[k] = v
-
-    return out
+    return pipeline_status_payload(task, pipeline_id)
 
 
 def get_pipeline_result(pipeline_id: str) -> dict[str, Any]:
     task = _get_task(pipeline_id)
-    return {
-        "pipeline_id": task.get("pipeline_id", pipeline_id),
-        "pair_name": _task_pair_name(task),
-        "status": _task_status(task),
-        "queued_at": task.get("queued_at"),
-        "started_at": task.get("started_at"),
-        "finished_at": task.get("finished_at"),
-        "updated_at": task.get("updated_at"),
-        "executor": task.get("executor"),
-        "attempt_count": task.get("attempt_count"),
-        "retry_count": task.get("retry_count"),
-        "error_type": task.get("error_type"),
-        "stage": _task_stage(task),
-        "progress": _task_progress(task),
-        "report": task.get("report"),
-        "timeline": task.get("timeline"),
-        "files": task.get("files"),
-    }
+    return pipeline_result_payload(task, pipeline_id)
 
 
 def get_pipeline_result_summary(pipeline_id: str) -> dict[str, Any]:
     task = _get_task(pipeline_id)
-    return {
-        "pipeline_id": task.get("pipeline_id", pipeline_id),
-        "pair_name": _task_pair_name(task),
-        "status": _task_status(task),
-        "queued_at": task.get("queued_at"),
-        "started_at": task.get("started_at"),
-        "finished_at": task.get("finished_at"),
-        "updated_at": task.get("updated_at"),
-        "executor": task.get("executor"),
-        "attempt_count": task.get("attempt_count"),
-        "retry_count": task.get("retry_count"),
-        "error_type": task.get("error_type"),
-        "stage": _task_stage(task),
-        "progress": _task_progress(task),
-        "report": _summarize_report(task.get("report")),
-        "timeline": _summarize_timeline(task.get("timeline")),
-        "files": task.get("files"),
-    }
+    return pipeline_result_summary_payload(task, pipeline_id)
 
 
 def get_pipeline_frame_detail(pipeline_id: str, frame: int) -> dict[str, Any]:
     task = _get_task(pipeline_id)
-    report = task.get("report") or {}
-    rows = report.get("frame_analysis") if isinstance(report, dict) else None
-
-    if not isinstance(rows, list):
-        return {
-            "pipeline_id": task.get("pipeline_id", pipeline_id),
-            "pair_name": _task_pair_name(task),
-            "status": _task_status(task),
-            "frame": frame,
-            "frame_analysis": None,
-        }
-
-    if frame < 0 or frame >= len(rows):
+    start_frame, end_frame, total, _ = resolve_frame_window(task, start_frame=frame, end_frame=frame)
+    if total <= 0 or start_frame != frame or end_frame != frame:
         raise HTTPException(status_code=404, detail=f"frame out of range: {frame}")
 
-    return {
-        "pipeline_id": task.get("pipeline_id", pipeline_id),
-        "pair_name": _task_pair_name(task),
-        "status": _task_status(task),
-        "frame": frame,
-        "frame_analysis": rows[frame],
-    }
+    rows = load_frame_analysis_range_records(pipeline_id, start_frame=frame, end_frame=frame)
+    if not rows:
+        inline_rows = task.get("report", {}).get("frame_analysis") if isinstance(task.get("report"), dict) else []
+        rows = [inline_rows[frame]] if isinstance(inline_rows, list) and 0 <= frame < len(inline_rows) else []
+
+    return pipeline_frame_detail_payload(task, pipeline_id, frame=frame, row=rows[0] if rows else None)
+
+
+def get_pipeline_frame_range(
+    pipeline_id: str,
+    *,
+    start_frame: int | None = None,
+    end_frame: int | None = None,
+    start_sec: float | None = None,
+    end_sec: float | None = None,
+) -> dict[str, Any]:
+    task = _get_task(pipeline_id)
+    resolved_start, resolved_end, total, teacher_fps = resolve_frame_window(
+        task,
+        start_frame=start_frame,
+        end_frame=end_frame,
+        start_sec=start_sec,
+        end_sec=end_sec,
+    )
+
+    rows: list[dict[str, Any]] = []
+    if total > 0 and resolved_end >= resolved_start:
+        rows = load_frame_analysis_range_records(
+            pipeline_id,
+            start_frame=resolved_start,
+            end_frame=resolved_end,
+        )
+        if not rows:
+            inline_rows = task.get("report", {}).get("frame_analysis") if isinstance(task.get("report"), dict) else []
+            rows = inline_rows[resolved_start : resolved_end + 1] if isinstance(inline_rows, list) else []
+
+    return pipeline_frame_range_payload(
+        task,
+        pipeline_id,
+        start_frame=resolved_start,
+        end_frame=resolved_end,
+        total=total,
+        teacher_fps=teacher_fps,
+        rows=rows,
+    )
 
 
 def get_pipeline_failure_stats(days: int = 30, limit: int = 20) -> dict[str, Any]:

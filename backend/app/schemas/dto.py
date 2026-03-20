@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 
 RoleType = Literal["teacher", "user"]
 RoleQueryType = Literal["teacher", "user", "all"]
-PipelineStatusType = Literal["pending", "running", "done", "failed"]
+PipelineStatusType = Literal["pending", "running", "done", "failed", "canceled"]
 
 
 class VideoUploadResponse(BaseModel):
@@ -62,6 +62,8 @@ class PipelineRunResponse(BaseModel):
     error_type: str | None = None
     stage: str | None = None
     progress: float | None = None
+    cancel_requested: bool = False
+    cancel_requested_at: str | None = None
 
 
 class PipelineStatusResponse(BaseModel):
@@ -79,6 +81,8 @@ class PipelineStatusResponse(BaseModel):
     error_type: str | None = None
     stage: str | None = None
     progress: float | None = None
+    cancel_requested: bool = False
+    cancel_requested_at: str | None = None
 
 
 class PipelineResultResponse(BaseModel):
@@ -95,6 +99,8 @@ class PipelineResultResponse(BaseModel):
     error_type: str | None = None
     stage: str | None = None
     progress: float | None = None
+    cancel_requested: bool = False
+    cancel_requested_at: str | None = None
     report: dict | None = None
     timeline: dict | None = None
     files: dict | None = None
@@ -114,6 +120,8 @@ class PipelineResultSummaryResponse(BaseModel):
     error_type: str | None = None
     stage: str | None = None
     progress: float | None = None
+    cancel_requested: bool = False
+    cancel_requested_at: str | None = None
     report: dict | None = None
     timeline: dict | None = None
     files: dict | None = None
@@ -125,6 +133,23 @@ class PipelineFrameDetailResponse(BaseModel):
     status: PipelineStatusType
     frame: int
     frame_analysis: dict | None = None
+
+
+class PipelineFrameRangeItem(BaseModel):
+    frame: int
+    sec: float | None = None
+    frame_analysis: dict | None = None
+
+
+class PipelineFrameRangeResponse(BaseModel):
+    pipeline_id: str
+    pair_name: str
+    status: PipelineStatusType
+    start_frame: int
+    end_frame: int
+    total: int
+    fps_teacher: float | None = None
+    items: list[PipelineFrameRangeItem]
 
 
 class PipelineTaskItem(BaseModel):
@@ -145,6 +170,8 @@ class PipelineTaskItem(BaseModel):
     updated_at: str | None = None
     score_total: float | None = None
     confidence_score: float | None = None
+    cancel_requested: bool = False
+    cancel_requested_at: str | None = None
 
 
 class PipelineTaskListResponse(BaseModel):

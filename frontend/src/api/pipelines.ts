@@ -5,6 +5,7 @@ import type {
   SystemActionResponse,
   SystemStatusResponse,
   PipelineFrameDetailResponse,
+  PipelineFrameRangeResponse,
   PipelineResultResponse,
   PipelineResultSummaryResponse,
   PipelineRunRequest,
@@ -23,6 +24,11 @@ export async function getPipelineStatus(pipelineId: string): Promise<PipelineSta
   return data;
 }
 
+export async function cancelPipeline(pipelineId: string): Promise<PipelineStatusResponse> {
+  const { data } = await http.post<PipelineStatusResponse>(`/api/pipelines/${pipelineId}/cancel`);
+  return data;
+}
+
 export async function getPipelineResult(pipelineId: string): Promise<PipelineResultResponse> {
   const { data } = await http.get<PipelineResultResponse>(`/api/pipelines/${pipelineId}/result`);
   return data;
@@ -38,6 +44,19 @@ export async function getPipelineFrameDetail(
   frame: number,
 ): Promise<PipelineFrameDetailResponse> {
   const { data } = await http.get<PipelineFrameDetailResponse>(`/api/pipelines/${pipelineId}/result/frame/${frame}`);
+  return data;
+}
+
+export async function getPipelineFrameRange(
+  pipelineId: string,
+  params: {
+    start_frame?: number;
+    end_frame?: number;
+    start_sec?: number;
+    end_sec?: number;
+  },
+): Promise<PipelineFrameRangeResponse> {
+  const { data } = await http.get<PipelineFrameRangeResponse>(`/api/pipelines/${pipelineId}/result/frames`, { params });
   return data;
 }
 

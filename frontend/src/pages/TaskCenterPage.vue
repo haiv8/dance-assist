@@ -51,6 +51,7 @@
               <option value="running">&#20998;&#26512;&#20013;</option>
               <option value="done">&#24050;&#23436;&#25104;</option>
               <option value="failed">&#22833;&#36133;</option>
+              <option value="canceled">&#24050;&#21462;&#28040;</option>
             </select>
           </div>
 
@@ -166,6 +167,9 @@
             <p class="helper-text">&#32858;&#28966;&#24403;&#21069;&#20219;&#21153;&#30340;&#29366;&#24577;&#12289;&#25688;&#35201;&#21644;&#21487;&#30452;&#25509;&#25171;&#24320;&#30340;&#36755;&#20986;&#25991;&#20214;&#12290;</p>
           </div>
           <div class="action-row" v-if="selectedTaskId">
+            <button class="ghost-button" :disabled="!canCancelSelectedTask || cancelingTask" @click="cancelSelectedTask">
+              {{ cancelingTask ? "\u53d6\u6d88\u4e2d..." : "\u53d6\u6d88\u4efb\u52a1" }}
+            </button>
             <button class="secondary-button" :disabled="copying" @click="copyTaskId">
               {{ copying ? "\u5df2\u590d\u5236" : "\u590d\u5236\u4efb\u52a1 ID" }}
             </button>
@@ -246,7 +250,7 @@
 import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { absMediaUrl } from "../api/http";
-import { getPipelineResultSummary, listPipelineTasks } from "../api/pipelines";
+import { cancelPipeline, getPipelineResultSummary, listPipelineTasks } from "../api/pipelines";
 import type { PipelineResultSummaryResponse, PipelineStatusType, PipelineTaskListItem } from "../types/video";
 
 const router = useRouter();
@@ -262,6 +266,7 @@ const selectedTaskId = ref("");
 const statusFilter = ref<"all" | PipelineStatusType>("all");
 const limit = ref(50);
 const copying = ref(false);
+const cancelingTask = ref(false);
 
 const selectedTask = computed(() => tasks.value.find((item) => item.pipeline_id === selectedTaskId.value) ?? null);
 const runningCount = computed(() => tasks.value.filter((item) => item.status === "pending" || item.status === "running").length);
@@ -292,6 +297,11 @@ const selectedTaskQuery = computed(() => {
   };
 });
 const canReopenInCompare = computed(() => Boolean(selectedTask.value?.teacher_video_id && selectedTask.value?.user_video_id));
+const canCancelSelectedTask = computed(() => {
+  const task = detail.value ?? selectedTask.value;
+  if (!task) return false;
+  return (task.status === "pending" || task.status === "running") && !task.cancel_requested;
+});
 const firstIssueMoment = computed(() => {
   const markers = detail.value?.report?.markers;
   if (Array.isArray(markers) && markers.length) {
@@ -373,6 +383,23 @@ async function copyTaskId() {
   }
 }
 
+async function cancelSelectedTask() {
+  if (!selectedTaskId.value || !canCancelSelectedTask.value) return;
+  cancelingTask.value = true;
+  detailError.value = "";
+  try {
+    const status = await cancelPipeline(selectedTaskId.value);
+    detail.value = detail.value ? { ...detail.value, ...status } : ({ ...status } as PipelineResultSummaryResponse);
+    tasks.value = tasks.value.map((item) =>
+      item.pipeline_id === selectedTaskId.value ? { ...item, ...status } : item,
+    );
+  } catch (err: any) {
+    detailError.value = err?.response?.data?.detail ?? err?.message ?? "\u53d6\u6d88\u4efb\u52a1\u5931\u8d25";
+  } finally {
+    cancelingTask.value = false;
+  }
+}
+
 function openReportCenter() {
   if (!selectedTaskId.value) return;
   void router.push({ path: "/reports", query: { pipeline: selectedTaskId.value } });
@@ -403,6 +430,7 @@ function statusText(status?: string) {
   if (status === "running") return "\u5206\u6790\u4e2d";
   if (status === "done") return "\u5df2\u5b8c\u6210";
   if (status === "failed") return "\u5931\u8d25";
+  if (status === "canceled") return "\u5df2\u53d6\u6d88";
   return status || "\u672a\u77e5";
 }
 
@@ -415,12 +443,14 @@ function stageText(stage?: string | null, status?: string) {
   if (stage === "packaging_results") return "\u6574\u7406\u7ed3\u679c";
   if (stage === "completed") return "\u7ed3\u679c\u5df2\u5c31\u7eea";
   if (stage === "failed") return "\u4efb\u52a1\u5931\u8d25";
+  if (stage === "canceled") return "\u4efb\u52a1\u5df2\u53d6\u6d88";
   return statusText(status);
 }
 
 function statusTagClass(status?: string) {
   if (status === "done") return "ok";
   if (status === "failed") return "danger";
+  if (status === "canceled") return "neutral";
   if (status === "pending" || status === "running") return "warn";
   return "neutral";
 }
