@@ -2,6 +2,7 @@
 import type {
   AnalysisReportDetailResponse,
   AnalysisReportListResponse,
+  PipelineActionResponse,
   SystemActionResponse,
   SystemStatusResponse,
   PipelineFrameDetailResponse,
@@ -26,6 +27,18 @@ export async function getPipelineStatus(pipelineId: string): Promise<PipelineSta
 
 export async function cancelPipeline(pipelineId: string): Promise<PipelineStatusResponse> {
   const { data } = await http.post<PipelineStatusResponse>(`/api/pipelines/${pipelineId}/cancel`);
+  return data;
+}
+
+export async function deletePipelineTask(pipelineId: string): Promise<PipelineActionResponse> {
+  const { data } = await http.delete<PipelineActionResponse>(`/api/pipelines/${pipelineId}`);
+  return data;
+}
+
+export async function retryPipeline(pipelineId: string, overwrite = false): Promise<PipelineStatusResponse> {
+  const { data } = await http.post<PipelineStatusResponse>(`/api/pipelines/${pipelineId}/retry`, null, {
+    params: { overwrite },
+  });
   return data;
 }
 

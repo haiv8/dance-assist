@@ -24,6 +24,12 @@ class PipelineConfig:
     coarse_trim_energy_q: float = 0.20
     coarse_trim_min_sec: float = 0.8
 
+    audio_align_enabled: bool = True
+    audio_align_sr: int = 2000
+    audio_align_hop_sec: float = 0.02
+    audio_align_max_lag_sec: float = 3.0
+    audio_align_peak_floor: float = 0.10
+
     feature_type_default: str = "fused"
     fused_w_angle: float = 0.45
     fused_w_bone: float = 0.35
@@ -38,6 +44,14 @@ class PipelineConfig:
     tempo_slow_thr: float = 0.85
     tempo_min_dur_sec: float = 1.2
     tempo_conf_quality_floor: float = 0.35
+    tempo_offset_tolerance_sec: float = 0.12
+    tempo_offset_bad_sec: float = 0.50
+    tempo_offset_smooth_win_sec: float = 0.35
+
+    local_match_window_sec: float = 1.0
+    local_match_offset_penalty: float = 0.18
+    local_match_feat_weight: float = 0.65
+    local_match_pose_weight: float = 0.35
 
     marker_min_gap_sec: float = 1.2
     marker_topk_pose: int = 10

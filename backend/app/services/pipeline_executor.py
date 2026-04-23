@@ -9,7 +9,15 @@ from typing import Any
 from app.settings import settings
 
 logger = logging.getLogger("dance_assist.pipeline_executor")
-PipelineWorker = Callable[[str, str, str, bool], None]
+PipelineWorker = Callable[..., Any]
+
+
+def _job_timeout_sec() -> int | None:
+    try:
+        timeout_sec = int(settings.PIPELINE_JOB_TIMEOUT_SEC)
+    except Exception:
+        return None
+    return timeout_sec if timeout_sec > 0 else None
 
 
 class PipelineExecutor:
@@ -40,6 +48,7 @@ class LocalThreadPipelineExecutor(PipelineExecutor):
         thread = threading.Thread(
             target=worker,
             args=(pipeline_id, teacher_video_id, user_video_id, overwrite),
+            kwargs={"timeout_sec": _job_timeout_sec()},
             daemon=True,
             name=f"pipeline-{pipeline_id}",
         )
@@ -66,6 +75,7 @@ class RedisQueuePipelineExecutor(PipelineExecutor):
             "overwrite": overwrite,
             "executor": self.backend_name,
             "attempt_count": 1,
+            "timeout_sec": _job_timeout_sec(),
         }
         client.rpush(settings.REDIS_PIPELINE_QUEUE, json.dumps(payload, ensure_ascii=False))
         return payload

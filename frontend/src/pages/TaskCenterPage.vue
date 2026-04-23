@@ -121,125 +121,132 @@
           <span class="feedback-state-copy">&#20320;&#21487;&#20197;&#20999;&#25442;&#29366;&#24577;&#31579;&#36873;&#65292;&#25110;&#22238;&#21040;&#21160;&#20316;&#20998;&#26512;&#39029;&#21457;&#36215;&#26032;&#30340;&#20998;&#26512;&#20219;&#21153;&#12290;</span>
         </div>
         <div v-else class="task-list">
-          <button
+          <div
             v-for="task in tasks"
             :key="task.pipeline_id"
-            type="button"
-            class="task-item"
-            :class="{ active: selectedTaskId === task.pipeline_id }"
-            @click="openTask(task.pipeline_id)"
+            class="task-item-shell"
           >
-            <div class="task-item-head">
-              <div>
-                <strong>{{ task.pair_name }}</strong>
-                <p class="helper-text">{{ task.pipeline_id }}</p>
+            <button
+              type="button"
+              class="task-item"
+              :class="{ active: selectedTaskId === task.pipeline_id }"
+              @click="toggleTask(task.pipeline_id)"
+            >
+              <div class="task-item-head">
+                <div>
+                  <strong>{{ task.pair_name }}</strong>
+                  <p class="helper-text">{{ task.pipeline_id }}</p>
+                </div>
+                <span class="tag" :class="statusTagClass(task.status)">{{ statusText(task.status) }}</span>
               </div>
-              <span class="tag" :class="statusTagClass(task.status)">{{ statusText(task.status) }}</span>
-            </div>
 
-            <div class="task-item-grid">
-              <div class="metric-chip"><strong>&#38454;&#27573;</strong><span>{{ stageText(task.stage, task.status) }}</span></div>
-              <div class="metric-chip"><strong>&#24635;&#20998;</strong><span>{{ scoreText(task.score_total) }}</span></div>
-              <div class="metric-chip"><strong>&#21487;&#20449;&#24230;</strong><span>{{ confidenceText(task.confidence_score) }}</span></div>
-            </div>
-
-            <div class="mini-progress" v-if="task.status === 'pending' || task.status === 'running'">
-              <div class="progress-head">
-                <strong>&#24403;&#21069;&#36827;&#24230;</strong>
-                <span>{{ progressPercent(task.progress) }}%</span>
+              <div class="task-item-grid">
+                <div class="metric-chip"><strong>&#38454;&#27573;</strong><span>{{ stageText(task.stage, task.status) }}</span></div>
+                <div class="metric-chip"><strong>&#24635;&#20998;</strong><span>{{ scoreText(task.score_total) }}</span></div>
+                <div class="metric-chip"><strong>&#21487;&#20449;&#24230;</strong><span>{{ confidenceText(task.confidence_score) }}</span></div>
               </div>
-              <div class="progress-track"><div class="progress-fill" :style="{ width: `${progressPercent(task.progress)}%` }"></div></div>
+
+              <div class="mini-progress" v-if="task.status === 'pending' || task.status === 'running'">
+                <div class="progress-head">
+                  <strong>&#24403;&#21069;&#36827;&#24230;</strong>
+                  <span>{{ progressPercent(task.progress) }}%</span>
+                </div>
+                <div class="progress-track"><div class="progress-fill" :style="{ width: `${progressPercent(task.progress)}%` }"></div></div>
+              </div>
+
+              <div class="task-item-meta">
+                <span>&#26356;&#26032;&#26102;&#38388;&#65306;{{ formatDate(task.updated_at || task.finished_at || task.started_at || task.queued_at) }}</span>
+                <span v-if="task.error_type">&#24322;&#24120;&#65306;{{ task.error_type }}</span>
+                <span v-else>&#25191;&#34892;&#22120;&#65306;{{ task.executor || '--' }}</span>
+              </div>
+            </button>
+
+            <div
+              v-if="selectedTaskId === task.pipeline_id"
+              ref="detailPanelRef"
+              class="task-inline-detail"
+            >
+              <div class="panel-head compact-head">
+                <div>
+                  <h2>&#20219;&#21153;&#35814;&#24773;</h2>
+                  <p class="helper-text">&#35814;&#32454;&#20449;&#24687;&#30452;&#25509;&#23637;&#24320;&#22312;&#24403;&#21069;&#20219;&#21153;&#19979;&#26041;&#65292;&#26080;&#38656;&#20999;&#25442;&#35270;&#32447;&#12290;</p>
+                </div>
+                <div class="action-row">
+                  <button class="ghost-button" :disabled="!canCancelSelectedTask || cancelingTask" @click="cancelSelectedTask">
+                    {{ cancelingTask ? "\u53d6\u6d88\u4e2d..." : "\u53d6\u6d88\u4efb\u52a1" }}
+                  </button>
+                  <button class="ghost-button danger-button" :disabled="!canDeleteSelectedTask || deletingTask" @click="deleteSelectedTask">
+                    {{ deletingTask ? "\u5220\u9664\u4e2d..." : "\u5220\u9664\u4efb\u52a1" }}
+                  </button>
+                  <button class="secondary-button" :disabled="copying" @click="copyTaskId">
+                    {{ copying ? "\u5df2\u590d\u5236" : "\u590d\u5236\u4efb\u52a1 ID" }}
+                  </button>
+                  <button class="secondary-button" @click="openReportCenter">
+                    {{ "\u6253\u5f00\u62a5\u544a\u4e2d\u5fc3" }}
+                  </button>
+                  <button class="secondary-button" :disabled="!canReopenInCompare" @click="reopenInCompare">
+                    {{ "\u56de\u5230\u52a8\u4f5c\u5206\u6790" }}
+                  </button>
+                </div>
+              </div>
+
+              <div v-if="detailLoading" class="feedback-state" data-tone="loading">
+                <strong class="feedback-state-title">&#20219;&#21153;&#35814;&#24773;&#21152;&#36733;&#20013;</strong>
+                <span class="feedback-state-copy">&#27491;&#22312;&#35835;&#21462;&#20219;&#21153;&#25688;&#35201;&#21644;&#36755;&#20986;&#25991;&#20214;&#65292;&#35831;&#31245;&#20505;&#12290;</span>
+              </div>
+              <div v-else-if="detailError" class="feedback-state" data-tone="error">
+                <strong class="feedback-state-title">&#20219;&#21153;&#35814;&#24773;&#21152;&#36733;&#22833;&#36133;</strong>
+                <span class="feedback-state-copy">{{ detailError }}</span>
+              </div>
+              <div v-else-if="detail" class="detail-stack">
+                <div class="metric-row compact-stats">
+                  <div class="metric-chip"><strong>&#29366;&#24577;</strong><span>{{ statusText(detail.status) }}</span></div>
+                  <div class="metric-chip"><strong>&#38454;&#27573;</strong><span>{{ stageText(detail.stage, detail.status) }}</span></div>
+                  <div class="metric-chip"><strong>&#36827;&#24230;</strong><span>{{ progressPercent(detail.progress) }}%</span></div>
+                </div>
+
+                <div class="metric-row compact-stats">
+                  <div class="metric-chip"><strong>&#24635;&#20998;</strong><span>{{ scoreText(detail.report?.score_0_100 ?? detail.report?.scores?.score_total) }}</span></div>
+                  <div class="metric-chip"><strong>&#21160;&#20316;</strong><span>{{ scoreText(detail.report?.scores?.score_pose) }}</span></div>
+                  <div class="metric-chip"><strong>&#33410;&#22863;</strong><span>{{ scoreText(detail.report?.scores?.score_tempo) }}</span></div>
+                </div>
+
+                <div class="metric-row compact-stats">
+                  <div class="metric-chip"><strong>&#21487;&#20449;&#24230;</strong><span>{{ detailConfidenceText }}</span></div>
+                  <div class="metric-chip"><strong>&#24320;&#22987;&#26102;&#38388;</strong><span>{{ formatDate(detail.started_at || detail.queued_at) }}</span></div>
+                  <div class="metric-chip"><strong>&#32467;&#26463;&#26102;&#38388;</strong><span>{{ formatDate(detail.finished_at || detail.updated_at) }}</span></div>
+                </div>
+
+                <div class="list-item-card" v-if="detail.report?.recommendations?.overall">
+                  <strong>&#25972;&#20307;&#24314;&#35758;</strong>
+                  <span class="helper-text">{{ detail.report.recommendations.overall }}</span>
+                </div>
+
+                <div class="list-item-card" v-if="detailConfidenceSummaryText">
+                  <strong>&#21487;&#20449;&#24230;&#35828;&#26126;</strong>
+                  <span class="helper-text">{{ detailConfidenceSummaryText }}</span>
+                </div>
+
+                <div class="list-item-card" v-if="topJointSummary">
+                  <strong>&#37325;&#28857;&#20851;&#33410;</strong>
+                  <span class="helper-text">{{ topJointSummary }}</span>
+                </div>
+
+                <div class="action-row" v-if="canJumpToIssue">
+                  <button class="secondary-button" type="button" @click="jumpToIssueMoment">&#23450;&#20301;&#38382;&#39064;&#29255;&#27573;</button>
+                </div>
+
+                <div v-if="detail.files" class="detail-links">
+                  <a v-if="detail.files.report_url" class="link-button secondary-button" :href="absMediaUrl(detail.files.report_url)" target="_blank">&#25171;&#24320;&#25253;&#21578; JSON</a>
+                  <a v-if="detail.files.teacher_overlay_url" class="link-button secondary-button" :href="absMediaUrl(detail.files.teacher_overlay_url)" target="_blank">&#25945;&#24072;&#39592;&#26550;&#35270;&#39057;</a>
+                  <a v-if="detail.files.user_overlay_url" class="link-button secondary-button" :href="absMediaUrl(detail.files.user_overlay_url)" target="_blank">&#23398;&#21592;&#39592;&#26550;&#35270;&#39057;</a>
+                  <a v-if="detail.files.timeline_json_url" class="link-button secondary-button" :href="absMediaUrl(detail.files.timeline_json_url)" target="_blank">&#26102;&#38388;&#36724; JSON</a>
+                  <button class="secondary-button" type="button" @click="openReportCenter">&#25171;&#24320;&#25253;&#21578;&#20013;&#24515;</button>
+                  <button class="secondary-button" type="button" :disabled="!canReopenInCompare" @click="reopenInCompare">&#22238;&#21040;&#21160;&#20316;&#20998;&#26512;</button>
+                </div>
+              </div>
             </div>
-
-            <div class="task-item-meta">
-              <span>&#26356;&#26032;&#26102;&#38388;&#65306;{{ formatDate(task.updated_at || task.finished_at || task.started_at || task.queued_at) }}</span>
-              <span v-if="task.error_type">&#24322;&#24120;&#65306;{{ task.error_type }}</span>
-              <span v-else>&#25191;&#34892;&#22120;&#65306;{{ task.executor || '--' }}</span>
-            </div>
-          </button>
-        </div>
-      </article>
-
-      <article class="surface-card detail-panel">
-        <div class="panel-head compact-head">
-          <div>
-            <h2>&#20219;&#21153;&#35814;&#24773;</h2>
-            <p class="helper-text">&#32858;&#28966;&#24403;&#21069;&#20219;&#21153;&#30340;&#29366;&#24577;&#12289;&#25688;&#35201;&#21644;&#21487;&#30452;&#25509;&#25171;&#24320;&#30340;&#36755;&#20986;&#25991;&#20214;&#12290;</p>
           </div>
-          <div class="action-row" v-if="selectedTaskId">
-            <button class="ghost-button" :disabled="!canCancelSelectedTask || cancelingTask" @click="cancelSelectedTask">
-              {{ cancelingTask ? "\u53d6\u6d88\u4e2d..." : "\u53d6\u6d88\u4efb\u52a1" }}
-            </button>
-            <button class="secondary-button" :disabled="copying" @click="copyTaskId">
-              {{ copying ? "\u5df2\u590d\u5236" : "\u590d\u5236\u4efb\u52a1 ID" }}
-            </button>
-            <button class="secondary-button" @click="openReportCenter">
-              {{ "\u6253\u5f00\u62a5\u544a\u4e2d\u5fc3" }}
-            </button>
-            <button class="secondary-button" :disabled="!canReopenInCompare" @click="reopenInCompare">
-              {{ "\u56de\u5230\u52a8\u4f5c\u5206\u6790" }}
-            </button>
-          </div>
-        </div>
-
-        <div v-if="detailLoading" class="feedback-state" data-tone="loading">
-          <strong class="feedback-state-title">&#20219;&#21153;&#35814;&#24773;&#21152;&#36733;&#20013;</strong>
-          <span class="feedback-state-copy">&#27491;&#22312;&#35835;&#21462;&#20219;&#21153;&#25688;&#35201;&#21644;&#36755;&#20986;&#25991;&#20214;&#65292;&#35831;&#31245;&#20505;&#12290;</span>
-        </div>
-        <div v-else-if="detailError" class="feedback-state" data-tone="error">
-          <strong class="feedback-state-title">&#20219;&#21153;&#35814;&#24773;&#21152;&#36733;&#22833;&#36133;</strong>
-          <span class="feedback-state-copy">{{ detailError }}</span>
-        </div>
-        <div v-else-if="detail" class="detail-stack">
-          <div class="metric-row compact-stats">
-            <div class="metric-chip"><strong>&#29366;&#24577;</strong><span>{{ statusText(detail.status) }}</span></div>
-            <div class="metric-chip"><strong>&#38454;&#27573;</strong><span>{{ stageText(detail.stage, detail.status) }}</span></div>
-            <div class="metric-chip"><strong>&#36827;&#24230;</strong><span>{{ progressPercent(detail.progress) }}%</span></div>
-          </div>
-
-          <div class="metric-row compact-stats">
-            <div class="metric-chip"><strong>&#24635;&#20998;</strong><span>{{ scoreText(detail.report?.score_0_100 ?? detail.report?.scores?.score_total) }}</span></div>
-            <div class="metric-chip"><strong>&#21160;&#20316;</strong><span>{{ scoreText(detail.report?.scores?.score_pose) }}</span></div>
-            <div class="metric-chip"><strong>&#33410;&#22863;</strong><span>{{ scoreText(detail.report?.scores?.score_tempo) }}</span></div>
-          </div>
-
-          <div class="metric-row compact-stats">
-            <div class="metric-chip"><strong>&#21487;&#20449;&#24230;</strong><span>{{ detailConfidenceText }}</span></div>
-            <div class="metric-chip"><strong>&#24320;&#22987;&#26102;&#38388;</strong><span>{{ formatDate(detail.started_at || detail.queued_at) }}</span></div>
-            <div class="metric-chip"><strong>&#32467;&#26463;&#26102;&#38388;</strong><span>{{ formatDate(detail.finished_at || detail.updated_at) }}</span></div>
-          </div>
-
-          <div class="list-item-card" v-if="detail.report?.recommendations?.overall">
-            <strong>&#25972;&#20307;&#24314;&#35758;</strong>
-            <span class="helper-text">{{ detail.report.recommendations.overall }}</span>
-          </div>
-
-          <div class="list-item-card" v-if="detail.report?.confidence?.summary">
-            <strong>&#21487;&#20449;&#24230;&#35828;&#26126;</strong>
-            <span class="helper-text">{{ detail.report.confidence.summary }}</span>
-          </div>
-
-          <div class="list-item-card" v-if="topJointSummary">
-            <strong>&#37325;&#28857;&#20851;&#33410;</strong>
-            <span class="helper-text">{{ topJointSummary }}</span>
-          </div>
-
-          <div class="action-row" v-if="canJumpToIssue">
-            <button class="secondary-button" type="button" @click="jumpToIssueMoment">&#23450;&#20301;&#38382;&#39064;&#29255;&#27573;</button>
-          </div>
-
-          <div v-if="detail.files" class="detail-links">
-            <a v-if="detail.files.report_url" class="link-button secondary-button" :href="absMediaUrl(detail.files.report_url)" target="_blank">&#25171;&#24320;&#25253;&#21578; JSON</a>
-            <a v-if="detail.files.teacher_overlay_url" class="link-button secondary-button" :href="absMediaUrl(detail.files.teacher_overlay_url)" target="_blank">&#25945;&#24072;&#39592;&#26550;&#35270;&#39057;</a>
-            <a v-if="detail.files.user_overlay_url" class="link-button secondary-button" :href="absMediaUrl(detail.files.user_overlay_url)" target="_blank">&#23398;&#21592;&#39592;&#26550;&#35270;&#39057;</a>
-            <a v-if="detail.files.timeline_json_url" class="link-button secondary-button" :href="absMediaUrl(detail.files.timeline_json_url)" target="_blank">&#26102;&#38388;&#36724; JSON</a>
-            <button class="secondary-button" type="button" @click="openReportCenter">&#25171;&#24320;&#25253;&#21578;&#20013;&#24515;</button>
-            <button class="secondary-button" type="button" :disabled="!canReopenInCompare" @click="reopenInCompare">&#22238;&#21040;&#21160;&#20316;&#20998;&#26512;</button>
-          </div>
-        </div>
-        <div v-else class="feedback-state" data-tone="empty">
-          <strong class="feedback-state-title">&#35831;&#36873;&#25321;&#19968;&#26465;&#20219;&#21153;</strong>
-          <span class="feedback-state-copy">&#28857;&#20987;&#24038;&#20391;&#20219;&#21153;&#21345;&#29255;&#21518;&#65292;&#36825;&#37324;&#20250;&#23637;&#31034;&#35813;&#20219;&#21153;&#30340;&#32467;&#26524;&#25688;&#35201;&#21644;&#21487;&#19979;&#36733;&#25991;&#20214;&#12290;</span>
         </div>
       </article>
     </section>
@@ -250,7 +257,9 @@
 import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { absMediaUrl } from "../api/http";
-import { cancelPipeline, getPipelineResultSummary, listPipelineTasks } from "../api/pipelines";
+import { cancelPipeline, deletePipelineTask, getPipelineResultSummary, listPipelineTasks } from "../api/pipelines";
+import { focusDetailPanel } from "../utils/detailPanel";
+import { normalizedConfidenceSummary } from "../utils/confidence";
 import type { PipelineResultSummaryResponse, PipelineStatusType, PipelineTaskListItem } from "../types/video";
 
 const router = useRouter();
@@ -262,11 +271,13 @@ const error = ref("");
 const detailLoading = ref(false);
 const detailError = ref("");
 const detail = ref<PipelineResultSummaryResponse | null>(null);
+const detailPanelRef = ref<HTMLElement | null>(null);
 const selectedTaskId = ref("");
 const statusFilter = ref<"all" | PipelineStatusType>("all");
 const limit = ref(50);
 const copying = ref(false);
 const cancelingTask = ref(false);
+const deletingTask = ref(false);
 
 const selectedTask = computed(() => tasks.value.find((item) => item.pipeline_id === selectedTaskId.value) ?? null);
 const runningCount = computed(() => tasks.value.filter((item) => item.status === "pending" || item.status === "running").length);
@@ -282,6 +293,9 @@ const detailConfidenceText = computed(() => {
   if (!Number.isFinite(score)) return "--";
   return `${Math.round(score * 100)}%`;
 });
+const detailConfidenceSummaryText = computed(() =>
+  normalizedConfidenceSummary(detail.value?.report?.confidence, detail.value?.report?.confidence?.summary),
+);
 const topJointSummary = computed(() => {
   const joints = detail.value?.report?.top_joints;
   if (!Array.isArray(joints) || !joints.length) return "";
@@ -301,6 +315,11 @@ const canCancelSelectedTask = computed(() => {
   const task = detail.value ?? selectedTask.value;
   if (!task) return false;
   return (task.status === "pending" || task.status === "running") && !task.cancel_requested;
+});
+const canDeleteSelectedTask = computed(() => {
+  const task = detail.value ?? selectedTask.value;
+  if (!task) return false;
+  return task.status !== "pending" && task.status !== "running";
 });
 const firstIssueMoment = computed(() => {
   const markers = detail.value?.report?.markers;
@@ -356,12 +375,27 @@ async function refreshTasks() {
   await loadTasks({ keepSelection: true });
 }
 
+function closeTaskDetail() {
+  selectedTaskId.value = "";
+  detail.value = null;
+  detailError.value = "";
+}
+
+async function toggleTask(pipelineId: string) {
+  if (pipelineId === selectedTaskId.value && detail.value) {
+    closeTaskDetail();
+    return;
+  }
+  await openTask(pipelineId);
+}
+
 async function openTask(pipelineId: string) {
   selectedTaskId.value = pipelineId;
   detailLoading.value = true;
   detailError.value = "";
   try {
     detail.value = await getPipelineResultSummary(pipelineId);
+    focusDetailPanel(detailPanelRef, { forceScroll: true });
   } catch (err: any) {
     detail.value = null;
     detailError.value = err?.response?.data?.detail ?? err?.message ?? "\u4efb\u52a1\u8be6\u60c5\u52a0\u8f7d\u5931\u8d25";
@@ -397,6 +431,36 @@ async function cancelSelectedTask() {
     detailError.value = err?.response?.data?.detail ?? err?.message ?? "\u53d6\u6d88\u4efb\u52a1\u5931\u8d25";
   } finally {
     cancelingTask.value = false;
+  }
+}
+
+async function deleteSelectedTask() {
+  const pipelineId = selectedTaskId.value;
+  const currentTask = selectedTask.value;
+  if (!pipelineId || !currentTask || !canDeleteSelectedTask.value) return;
+
+  const confirmed = window.confirm(`确认删除任务“${currentTask.pair_name}”吗？删除后将从任务中心和报告中心移除。`);
+  if (!confirmed) return;
+
+  deletingTask.value = true;
+  detailError.value = "";
+  try {
+    await deletePipelineTask(pipelineId);
+    tasks.value = tasks.value.filter((item) => item.pipeline_id !== pipelineId);
+
+    const nextTask = tasks.value[0] ?? null;
+    if (!nextTask) {
+      selectedTaskId.value = "";
+      detail.value = null;
+      detailError.value = "";
+      return;
+    }
+
+    await openTask(nextTask.pipeline_id);
+  } catch (err: any) {
+    detailError.value = err?.response?.data?.detail ?? err?.message ?? "\u5220\u9664\u4efb\u52a1\u5931\u8d25";
+  } finally {
+    deletingTask.value = false;
   }
 }
 
@@ -505,10 +569,12 @@ onMounted(async () => {
 
 .task-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1.15fr) minmax(340px, 0.85fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 16px;
+  align-items: stretch;
 }
 
+.task-item-shell,
 .task-list,
 .detail-stack {
   display: grid;
@@ -607,12 +673,28 @@ onMounted(async () => {
   font-size: 0.84rem;
 }
 
-.detail-panel {
-  min-height: 100%;
+.task-inline-detail {
+  display: grid;
+  gap: 14px;
+  padding: 16px 18px 18px;
+  border-radius: 18px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: linear-gradient(180deg, rgba(248, 250, 252, 0.98) 0%, rgba(255, 255, 255, 0.98) 100%);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.04);
 }
 
 .detail-links {
   margin-top: 4px;
+}
+
+.danger-button {
+  color: #b42318;
+  border-color: rgba(180, 35, 24, 0.22);
+}
+
+.danger-button:hover:not(:disabled) {
+  border-color: rgba(180, 35, 24, 0.4);
+  background: rgba(180, 35, 24, 0.08);
 }
 
 @media (max-width: 1180px) {

@@ -3,6 +3,7 @@
 from fastapi import APIRouter
 
 from app.schemas.dto import (
+    PipelineActionResponse,
     PipelineFailureStatsResponse,
     PipelineFrameDetailResponse,
     PipelineFrameRangeResponse,
@@ -21,7 +22,9 @@ from app.services.pipeline import (
     get_pipeline_result_summary,
     get_pipeline_status,
     list_pipeline_tasks,
+    remove_pipeline_task,
     request_pipeline_cancel,
+    request_pipeline_retry,
     run_pipeline,
 )
 
@@ -56,6 +59,16 @@ async def pipeline_status_api(pipeline_id: str):
 @router.post("/{pipeline_id}/cancel", response_model=PipelineStatusResponse)
 async def pipeline_cancel_api(pipeline_id: str):
     return PipelineStatusResponse(**request_pipeline_cancel(pipeline_id))
+
+
+@router.delete("/{pipeline_id}", response_model=PipelineActionResponse)
+async def pipeline_delete_api(pipeline_id: str):
+    return PipelineActionResponse(**remove_pipeline_task(pipeline_id))
+
+
+@router.post("/{pipeline_id}/retry", response_model=PipelineStatusResponse)
+async def pipeline_retry_api(pipeline_id: str, overwrite: bool = False):
+    return PipelineStatusResponse(**request_pipeline_retry(pipeline_id, overwrite=overwrite))
 
 
 @router.get("/{pipeline_id}/result", response_model=PipelineResultResponse)

@@ -42,15 +42,19 @@ export interface PipelineRunResponse {
   pipeline_id: string;
   pair_name: string;
   status: PipelineStatusType;
+  message?: string | null;
   queued_at?: string | null;
   updated_at?: string | null;
   executor?: string | null;
   attempt_count?: number | null;
+  retry_count?: number | null;
   error_type?: string | null;
   stage?: string | null;
   progress?: number | null;
   cancel_requested?: boolean | null;
   cancel_requested_at?: string | null;
+  timeout_sec?: number | null;
+  timeout_at?: string | null;
 }
 
 export interface PipelineStatusResponse {
@@ -64,28 +68,41 @@ export interface PipelineStatusResponse {
   updated_at?: string | null;
   executor?: string | null;
   attempt_count?: number | null;
+  retry_count?: number | null;
   error_type?: string | null;
   stage?: string | null;
   progress?: number | null;
   cancel_requested?: boolean | null;
   cancel_requested_at?: string | null;
+  timeout_sec?: number | null;
+  timeout_at?: string | null;
+}
+
+export interface PipelineActionResponse {
+  ok: boolean;
+  pipeline_id: string;
+  message: string;
 }
 
 export interface PipelineResultResponse {
   pipeline_id: string;
   pair_name: string;
   status: PipelineStatusType;
+  message?: string | null;
   queued_at?: string | null;
   started_at?: string | null;
   finished_at?: string | null;
   updated_at?: string | null;
   executor?: string | null;
   attempt_count?: number | null;
+  retry_count?: number | null;
   error_type?: string | null;
   stage?: string | null;
   progress?: number | null;
   cancel_requested?: boolean | null;
   cancel_requested_at?: string | null;
+  timeout_sec?: number | null;
+  timeout_at?: string | null;
   report?: Record<string, any> | null;
   timeline?: Record<string, any> | null;
   files?: Record<string, string> | null;
@@ -95,17 +112,21 @@ export interface PipelineResultSummaryResponse {
   pipeline_id: string;
   pair_name: string;
   status: PipelineStatusType;
+  message?: string | null;
   queued_at?: string | null;
   started_at?: string | null;
   finished_at?: string | null;
   updated_at?: string | null;
   executor?: string | null;
   attempt_count?: number | null;
+  retry_count?: number | null;
   error_type?: string | null;
   stage?: string | null;
   progress?: number | null;
   cancel_requested?: boolean | null;
   cancel_requested_at?: string | null;
+  timeout_sec?: number | null;
+  timeout_at?: string | null;
   report?: Record<string, any> | null;
   timeline?: Record<string, any> | null;
   files?: Record<string, string> | null;
@@ -141,6 +162,7 @@ export interface PipelineTaskListItem {
   pipeline_id: string;
   pair_name: string;
   status: PipelineStatusType;
+  message?: string | null;
   stage?: string | null;
   progress?: number | null;
   teacher_video_id?: string | null;
@@ -157,6 +179,8 @@ export interface PipelineTaskListItem {
   confidence_score?: number | null;
   cancel_requested?: boolean | null;
   cancel_requested_at?: string | null;
+  timeout_sec?: number | null;
+  timeout_at?: string | null;
 }
 
 export interface PipelineTaskListResponse {

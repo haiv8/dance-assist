@@ -7,10 +7,19 @@ $logDir = Join-Path $runtime 'logs'
 $pidFile = Join-Path $pidDir 'redis-pipeline-worker.pid'
 $logFile = Join-Path $logDir 'redis-pipeline-worker.log'
 $errorLogFile = Join-Path $logDir 'redis-pipeline-worker.err.log'
-$workerScript = Join-Path $root 'scripts\run-redis-pipeline-worker.ps1'
+$python = Join-Path $root '.venv\Scripts\python.exe'
+$backendDir = Join-Path $root 'backend'
 
 New-Item -ItemType Directory -Force -Path $pidDir | Out-Null
 New-Item -ItemType Directory -Force -Path $logDir | Out-Null
+
+if (-not (Test-Path $python)) {
+  throw "python not found: $python"
+}
+
+if (Test-Path Env:PATH) {
+  Remove-Item Env:PATH -ErrorAction SilentlyContinue
+}
 
 if (Test-Path $pidFile) {
   $existingPid = (Get-Content $pidFile -ErrorAction SilentlyContinue | Select-Object -First 1).Trim()
@@ -24,13 +33,7 @@ if (Test-Path $pidFile) {
   Remove-Item $pidFile -Force -ErrorAction SilentlyContinue
 }
 
-$processPath = [System.Environment]::GetEnvironmentVariable('Path', 'Process')
-$processPATH = [System.Environment]::GetEnvironmentVariable('PATH', 'Process')
-if ($processPath -and $processPATH) {
-  [System.Environment]::SetEnvironmentVariable('PATH', $null, 'Process')
-}
-
-$proc = Start-Process -FilePath 'powershell.exe' -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File',$workerScript -RedirectStandardOutput $logFile -RedirectStandardError $errorLogFile -PassThru -WindowStyle Hidden
+$proc = Start-Process -FilePath $python -ArgumentList '-m','app.workers.pipeline_redis_worker' -WorkingDirectory $backendDir -RedirectStandardOutput $logFile -RedirectStandardError $errorLogFile -PassThru -WindowStyle Hidden
 Set-Content -Path $pidFile -Value $proc.Id -Encoding ascii
 Start-Sleep -Seconds 1
 if ($proc.HasExited) {

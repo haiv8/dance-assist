@@ -101,9 +101,19 @@ class Settings:
     PIPELINE_EXECUTOR: str = _str_env("DANCE_ASSIST_PIPELINE_EXECUTOR", "local_thread")
     REDIS_URL: str = _str_env("DANCE_ASSIST_REDIS_URL", "")
     REDIS_PIPELINE_QUEUE: str = _str_env("DANCE_ASSIST_REDIS_PIPELINE_QUEUE", "dance_assist:pipeline_jobs")
+    REDIS_PIPELINE_DEAD_LETTER_QUEUE: str = _str_env(
+        "DANCE_ASSIST_REDIS_PIPELINE_DEAD_LETTER_QUEUE",
+        "dance_assist:pipeline_jobs:dead_letter",
+    )
+    REDIS_WORKER_HEARTBEAT_KEY: str = _str_env(
+        "DANCE_ASSIST_REDIS_WORKER_HEARTBEAT_KEY",
+        "dance_assist:pipeline_jobs:worker_heartbeat",
+    )
+    REDIS_WORKER_HEARTBEAT_TTL_SEC: int = _int_env("DANCE_ASSIST_REDIS_WORKER_HEARTBEAT_TTL_SEC", 30)
     REDIS_BLOCK_TIMEOUT_SEC: int = _int_env("DANCE_ASSIST_REDIS_BLOCK_TIMEOUT_SEC", 5)
     PIPELINE_MAX_RETRIES: int = _int_env("DANCE_ASSIST_PIPELINE_MAX_RETRIES", 2)
     PIPELINE_RETRY_BACKOFF_SEC: int = _int_env("DANCE_ASSIST_PIPELINE_RETRY_BACKOFF_SEC", 2)
+    PIPELINE_JOB_TIMEOUT_SEC: int = _int_env("DANCE_ASSIST_PIPELINE_JOB_TIMEOUT_SEC", 900)
     MIN_FREE_DISK_GB: int = _int_env("DANCE_ASSIST_MIN_FREE_DISK_GB", 2)
 
     BASE_DIR = Path(__file__).resolve().parents[1]  # backend/

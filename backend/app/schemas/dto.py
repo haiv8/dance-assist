@@ -54,6 +54,7 @@ class PipelineRunResponse(BaseModel):
     pipeline_id: str
     pair_name: str
     status: PipelineStatusType
+    message: str | None = None
     queued_at: str | None = None
     updated_at: str | None = None
     executor: str | None = None
@@ -64,6 +65,8 @@ class PipelineRunResponse(BaseModel):
     progress: float | None = None
     cancel_requested: bool = False
     cancel_requested_at: str | None = None
+    timeout_sec: int | None = None
+    timeout_at: str | None = None
 
 
 class PipelineStatusResponse(BaseModel):
@@ -83,12 +86,21 @@ class PipelineStatusResponse(BaseModel):
     progress: float | None = None
     cancel_requested: bool = False
     cancel_requested_at: str | None = None
+    timeout_sec: int | None = None
+    timeout_at: str | None = None
+
+
+class PipelineActionResponse(BaseModel):
+    ok: bool
+    pipeline_id: str
+    message: str
 
 
 class PipelineResultResponse(BaseModel):
     pipeline_id: str
     pair_name: str
     status: PipelineStatusType
+    message: str | None = None
     queued_at: str | None = None
     started_at: str | None = None
     finished_at: str | None = None
@@ -101,6 +113,8 @@ class PipelineResultResponse(BaseModel):
     progress: float | None = None
     cancel_requested: bool = False
     cancel_requested_at: str | None = None
+    timeout_sec: int | None = None
+    timeout_at: str | None = None
     report: dict | None = None
     timeline: dict | None = None
     files: dict | None = None
@@ -110,6 +124,7 @@ class PipelineResultSummaryResponse(BaseModel):
     pipeline_id: str
     pair_name: str
     status: PipelineStatusType
+    message: str | None = None
     queued_at: str | None = None
     started_at: str | None = None
     finished_at: str | None = None
@@ -122,6 +137,8 @@ class PipelineResultSummaryResponse(BaseModel):
     progress: float | None = None
     cancel_requested: bool = False
     cancel_requested_at: str | None = None
+    timeout_sec: int | None = None
+    timeout_at: str | None = None
     report: dict | None = None
     timeline: dict | None = None
     files: dict | None = None
@@ -156,6 +173,7 @@ class PipelineTaskItem(BaseModel):
     pipeline_id: str
     pair_name: str
     status: PipelineStatusType
+    message: str | None = None
     stage: str | None = None
     progress: float | None = None
     teacher_video_id: str | None = None
@@ -172,6 +190,8 @@ class PipelineTaskItem(BaseModel):
     confidence_score: float | None = None
     cancel_requested: bool = False
     cancel_requested_at: str | None = None
+    timeout_sec: int | None = None
+    timeout_at: str | None = None
 
 
 class PipelineTaskListResponse(BaseModel):

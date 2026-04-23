@@ -1,6 +1,9 @@
 ﻿from __future__ import annotations
 
+import io
+import json
 import math
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -8,7 +11,8 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
-from scipy.signal import savgol_filter
+from scipy.io import wavfile
+from scipy.signal import correlate, savgol_filter
 
 from core.config import PipelineConfig
 from core.io_utils import dump_json, ensure_dir, make_result_id, utc_ts
@@ -255,6 +259,146 @@ def _motion_energy(xyz_body: np.ndarray) -> np.ndarray:
     v[1:] = target[1:] - target[:-1]
     e = np.linalg.norm(v, axis=1)
     return e
+
+
+def _extract_audio_waveform(video_path: Path, sample_rate: int) -> np.ndarray:
+    cmd = [
+        "ffmpeg",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-i",
+        str(video_path),
+        "-vn",
+        "-ac",
+        "1",
+        "-ar",
+        str(int(sample_rate)),
+        "-f",
+        "wav",
+        "pipe:1",
+    ]
+    try:
+        res = subprocess.run(cmd, capture_output=True, check=False)
+    except Exception:
+        return np.zeros(0, dtype=np.float32)
+    if res.returncode != 0 or not res.stdout:
+        return np.zeros(0, dtype=np.float32)
+
+    try:
+        sr, audio = wavfile.read(io.BytesIO(res.stdout))
+    except Exception:
+        return np.zeros(0, dtype=np.float32)
+    if int(sr) <= 0:
+        return np.zeros(0, dtype=np.float32)
+
+    if audio.ndim > 1:
+        audio = np.mean(audio, axis=1)
+    audio = audio.astype(np.float32, copy=False)
+
+    if np.max(np.abs(audio)) > 0:
+        audio /= float(np.max(np.abs(audio)))
+    return np.nan_to_num(audio, nan=0.0, posinf=0.0, neginf=0.0).astype(np.float32)
+
+
+def _audio_onset_envelope(audio: np.ndarray, sample_rate: int, hop_sec: float) -> np.ndarray:
+    if audio.size <= 0 or sample_rate <= 0:
+        return np.zeros(0, dtype=np.float32)
+    hop = int(max(1, round(hop_sec * sample_rate)))
+    frame_count = int(math.ceil(audio.shape[0] / hop))
+    if frame_count <= 0:
+        return np.zeros(0, dtype=np.float32)
+
+    padded = np.pad(audio, (0, frame_count * hop - audio.shape[0]))
+    frames = padded.reshape(frame_count, hop)
+    energy = np.mean(np.abs(frames), axis=1).astype(np.float32)
+    if energy.size >= 3:
+        energy = np.maximum(0.0, energy - np.median(energy)).astype(np.float32)
+        diff = np.diff(energy, prepend=energy[:1])
+        env = np.maximum(0.0, diff).astype(np.float32)
+        kernel = np.ones(5, dtype=np.float32) / 5.0
+        env = np.convolve(env, kernel, mode="same").astype(np.float32)
+    else:
+        env = energy
+
+    std = float(np.std(env))
+    if std > 1e-6:
+        env = ((env - float(np.mean(env))) / std).astype(np.float32)
+    return np.nan_to_num(env, nan=0.0, posinf=0.0, neginf=0.0).astype(np.float32)
+
+
+def _estimate_audio_offset_sec(teacher_video_path: Path, user_video_path: Path, cfg: PipelineConfig) -> dict[str, Any]:
+    if not cfg.audio_align_enabled:
+        return {
+            "enabled": False,
+            "available": False,
+            "reliable": False,
+            "offset_sec": 0.0,
+            "peak_value": 0.0,
+            "method": "disabled",
+        }
+
+    t_audio = _extract_audio_waveform(teacher_video_path, cfg.audio_align_sr)
+    u_audio = _extract_audio_waveform(user_video_path, cfg.audio_align_sr)
+    if t_audio.size == 0 or u_audio.size == 0:
+        return {
+            "enabled": True,
+            "available": False,
+            "reliable": False,
+            "offset_sec": 0.0,
+            "peak_value": 0.0,
+            "method": "audio_missing",
+        }
+
+    t_env = _audio_onset_envelope(t_audio, cfg.audio_align_sr, cfg.audio_align_hop_sec)
+    u_env = _audio_onset_envelope(u_audio, cfg.audio_align_sr, cfg.audio_align_hop_sec)
+    if t_env.size == 0 or u_env.size == 0:
+        return {
+            "enabled": True,
+            "available": False,
+            "reliable": False,
+            "offset_sec": 0.0,
+            "peak_value": 0.0,
+            "method": "audio_empty",
+        }
+
+    corr = correlate(u_env, t_env, mode="full", method="fft")
+    lags = np.arange(-t_env.size + 1, u_env.size, dtype=np.int32)
+    max_lag = int(max(1, round(cfg.audio_align_max_lag_sec / max(1e-6, cfg.audio_align_hop_sec))))
+    valid = np.abs(lags) <= max_lag
+    if not np.any(valid):
+        return {
+            "enabled": True,
+            "available": True,
+            "reliable": False,
+            "offset_sec": 0.0,
+            "peak_value": 0.0,
+            "method": "audio_no_lag_window",
+        }
+
+    corr_valid = corr[valid]
+    lags_valid = lags[valid]
+    best_idx = int(np.argmax(corr_valid))
+    best_lag = int(lags_valid[best_idx])
+    best_peak = float(corr_valid[best_idx])
+    denom = float(np.linalg.norm(t_env) * np.linalg.norm(u_env))
+    peak_value = best_peak / denom if denom > 1e-6 else 0.0
+    offset_sec = float(best_lag * cfg.audio_align_hop_sec)
+    reliable = bool(np.isfinite(peak_value) and peak_value >= cfg.audio_align_peak_floor)
+    return {
+        "enabled": True,
+        "available": True,
+        "reliable": reliable,
+        "offset_sec": offset_sec if reliable else 0.0,
+        "peak_value": float(peak_value),
+        "method": "audio_xcorr",
+    }
+
+
+def _build_sync_map(Tt: int, fps_t: float, Tu: int, fps_u: float, offset_sec: float) -> np.ndarray:
+    teacher_sec = np.arange(Tt, dtype=np.float32) / max(1e-6, fps_t)
+    sync_user = (teacher_sec + float(offset_sec)) * max(1e-6, fps_u)
+    return np.clip(sync_user, 0.0, max(0, Tu - 1)).astype(np.float32)
 
 
 def _trim_range(energy: np.ndarray, fps: float, cfg: PipelineConfig) -> tuple[int, int]:
@@ -559,6 +703,152 @@ def _tempo(map_user_frame: np.ndarray, expected_ratio: float, fps_t: float, fram
     return tr.astype(np.float32), conf.astype(np.float32), segments, dev_area
 
 
+def _windowed_match_map(
+    t_feat: np.ndarray,
+    u_feat: np.ndarray,
+    t_body: np.ndarray,
+    u_body: np.ndarray,
+    tq: np.ndarray,
+    uq: np.ndarray,
+    sync_user_frame: np.ndarray,
+    fps_u: float,
+    cfg: PipelineConfig,
+) -> tuple[np.ndarray, np.ndarray]:
+    Tt = t_feat.shape[0]
+    Tu = u_feat.shape[0]
+    if Tt <= 0 or Tu <= 0:
+        return np.zeros(Tt, dtype=np.int32), np.zeros(Tt, dtype=np.float32)
+
+    radius = int(max(1, round(cfg.local_match_window_sec * fps_u)))
+    feat_norm = float(np.sqrt(max(1, t_feat.shape[1])))
+    best_idx = np.zeros(Tt, dtype=np.int32)
+    best_cost = np.zeros(Tt, dtype=np.float32)
+
+    for i in range(Tt):
+        center = float(sync_user_frame[i])
+        lo = max(0, int(math.floor(center)) - radius)
+        hi = min(Tu - 1, int(math.ceil(center)) + radius)
+        cand_idx = np.arange(lo, hi + 1, dtype=np.int32)
+        if cand_idx.size == 0:
+            best_idx[i] = int(np.clip(round(center), 0, Tu - 1))
+            continue
+
+        feat_dist = np.linalg.norm(u_feat[cand_idx] - t_feat[i], axis=1) / feat_norm
+        pose_dist = np.mean(
+            np.linalg.norm(u_body[cand_idx][:, KEY_JOINTS, :] - t_body[i, KEY_JOINTS, :], axis=2),
+            axis=1,
+        )
+        q = np.clip(np.minimum(float(tq[i]), uq[cand_idx]), 0.05, 1.0)
+        offset_sec = np.abs((cand_idx.astype(np.float32) - center) / max(1e-6, fps_u))
+        offset_penalty = np.clip(
+            np.maximum(0.0, offset_sec - cfg.tempo_offset_tolerance_sec) / max(1e-6, cfg.local_match_window_sec),
+            0.0,
+            1.0,
+        )
+
+        cost = (
+            cfg.local_match_feat_weight * feat_dist
+            + cfg.local_match_pose_weight * pose_dist
+            + cfg.local_match_offset_penalty * offset_penalty
+        )
+        cost = cost * (1.0 + 0.35 * (1.0 - q))
+        pick = int(np.argmin(cost))
+        best_idx[i] = int(cand_idx[pick])
+        best_cost[i] = float(cost[pick])
+
+    best_idx = np.maximum.accumulate(best_idx)
+    best_idx = np.clip(best_idx, 0, max(0, Tu - 1)).astype(np.int32)
+    return best_idx, best_cost
+
+
+def _tempo_from_windowed_matches(
+    sync_user_frame: np.ndarray,
+    matched_user_frame: np.ndarray,
+    fps_t: float,
+    fps_u: float,
+    frame_quality: np.ndarray,
+    cfg: PipelineConfig,
+) -> tuple[np.ndarray, np.ndarray, list[dict], float, np.ndarray]:
+    offset_sec = (matched_user_frame.astype(np.float32) - sync_user_frame.astype(np.float32)) / max(1e-6, fps_u)
+    smooth = offset_sec.astype(np.float32)
+    win = int(max(3, round(cfg.tempo_offset_smooth_win_sec * fps_t)))
+    if win % 2 == 0:
+        win += 1
+    if smooth.size >= win:
+        smooth = savgol_filter(smooth, window_length=win, polyorder=2).astype(np.float32)
+
+    tol = float(cfg.tempo_offset_tolerance_sec)
+    bad = float(max(cfg.tempo_offset_bad_sec, tol + 1e-3))
+    conf = np.clip(frame_quality.astype(np.float32), 0.0, 1.0)
+
+    penalty = np.clip((np.abs(smooth) - tol) / max(1e-6, bad - tol), 0.0, 1.0)
+    tempo_rel = np.ones_like(smooth, dtype=np.float32)
+    fast_mask = smooth < -tol
+    slow_mask = smooth > tol
+    tempo_rel[fast_mask] = np.clip(1.0 + penalty[fast_mask], 1.0, 3.0)
+    tempo_rel[slow_mask] = np.clip(1.0 - penalty[slow_mask], 0.3, 1.0)
+
+    valid = conf >= cfg.tempo_conf_quality_floor
+    min_len = int(max(1, round(cfg.tempo_min_dur_sec * fps_t)))
+    segments: list[dict[str, Any]] = []
+
+    def add_segments(mask: np.ndarray, typ: str) -> None:
+        st = None
+        for i, flag in enumerate(mask):
+            if flag and st is None:
+                st = i
+            if (not flag) and st is not None:
+                ed = i - 1
+                if (ed - st + 1) >= min_len:
+                    seg_off = smooth[st:ed + 1]
+                    mean_abs = float(np.mean(np.abs(seg_off)))
+                    if mean_abs <= tol + 0.08:
+                        sev = "mild"
+                    elif mean_abs <= tol + 0.22:
+                        sev = "clear"
+                    else:
+                        sev = "severe"
+                    segments.append({
+                        "type": typ,
+                        "severity": sev,
+                        "start_frame": int(st),
+                        "end_frame": int(ed),
+                        "start_sec": float(st / fps_t),
+                        "end_sec": float(ed / fps_t),
+                        "duration_sec": float((ed - st + 1) / fps_t),
+                        "mean_tempo_rel": float(np.mean(tempo_rel[st:ed + 1])),
+                        "mean_offset_sec": float(np.mean(seg_off)),
+                    })
+                st = None
+        if st is not None:
+            ed = len(mask) - 1
+            if (ed - st + 1) >= min_len:
+                seg_off = smooth[st:ed + 1]
+                mean_abs = float(np.mean(np.abs(seg_off)))
+                if mean_abs <= tol + 0.08:
+                    sev = "mild"
+                elif mean_abs <= tol + 0.22:
+                    sev = "clear"
+                else:
+                    sev = "severe"
+                segments.append({
+                    "type": typ,
+                    "severity": sev,
+                    "start_frame": int(st),
+                    "end_frame": int(ed),
+                    "start_sec": float(st / fps_t),
+                    "end_sec": float(ed / fps_t),
+                    "duration_sec": float((ed - st + 1) / fps_t),
+                    "mean_tempo_rel": float(np.mean(tempo_rel[st:ed + 1])),
+                    "mean_offset_sec": float(np.mean(seg_off)),
+                })
+
+    add_segments(fast_mask & valid, "fast")
+    add_segments(slow_mask & valid, "slow")
+    dev_area = float(np.mean(penalty * conf))
+    return tempo_rel.astype(np.float32), conf.astype(np.float32), segments, dev_area, smooth.astype(np.float32)
+
+
 def _peak_pick(curve: np.ndarray, topk: int, min_gap: int, valid_mask: np.ndarray | None = None) -> list[int]:
     x = np.nan_to_num(curve.astype(np.float64), nan=0.0)
     order = np.argsort(-x)
@@ -688,8 +978,9 @@ def _build_beginner_report(
     tempo_notes = []
     for seg in tempo_segments[:5]:
         typ = "偏快" if seg.get("type") == "fast" else "偏慢"
+        mean_offset = float(seg.get("mean_offset_sec", 0.0))
         tempo_notes.append(
-            f"{float(seg.get('start_sec', 0.0)):.2f}s - {float(seg.get('end_sec', 0.0)):.2f}s：节奏{typ}"
+            f"{float(seg.get('start_sec', 0.0)):.2f}s - {float(seg.get('end_sec', 0.0)):.2f}s：节奏{typ}，平均时间偏差 {abs(mean_offset):.2f}s"
         )
 
     focus = [_joint_to_cn(str(j[0])) for j in top_joints[:5]]
@@ -892,42 +1183,42 @@ def _build_confidence_summary(
 
     if score >= 0.78:
         level = "high"
-        summary = "?????????????????????????????"
+        summary = "当前结果可信度较高，关键点跟踪、动作对齐和节奏估计整体稳定，可作为本轮分析的主要参考。"
     elif score >= 0.55:
         level = "medium"
-        summary = "????????????????????????????"
+        summary = "当前结果可信度中等，整体趋势可以参考，但局部片段可能受跟踪质量或对齐稳定性影响。"
     else:
         level = "low"
-        summary = "????????????????????????????????????"
+        summary = "当前结果可信度较低，建议优先检查拍摄视角、遮挡和节奏同步情况，再结合视频回放谨慎解读。"
 
     issues: list[dict[str, Any]] = []
     if max(teacher["invalid_ratio"], user["invalid_ratio"]) >= 0.22:
         issues.append({
             "code": "tracking_coverage_low",
             "severity": "high" if max(teacher["invalid_ratio"], user["invalid_ratio"]) >= 0.35 else "medium",
-            "message": "??????????????",
-            "suggestion": "?????????????????????",
+            "message": "关键点覆盖率偏低，部分肢体没有被稳定识别。",
+            "suggestion": "建议保证全身完整入镜、光照均匀，并尽量减少快速遮挡后再重新分析。",
         })
     if max(teacher["long_gap_ratio"], user["long_gap_ratio"]) >= 0.10:
         issues.append({
             "code": "long_occlusion_gap",
             "severity": "medium",
-            "message": "?????????????",
-            "suggestion": "????????????????????",
+            "message": "存在较长时间的遮挡或关键点缺失。",
+            "suggestion": "建议拉开拍摄距离，减少遮挡，确保手脚和躯干连续可见。",
         })
     if bad_alignment or align.jump_rate >= 0.35:
         issues.append({
             "code": "alignment_unstable",
             "severity": "high" if bad_alignment else "medium",
-            "message": "???????????????????",
-            "suggestion": "??????????????????????",
+            "message": "动作对齐稳定性不足，部分片段的匹配结果可能不够可靠。",
+            "suggestion": "建议检查示范与学员视频的起始时刻是否接近，并尽量保留完整连续的动作片段。",
         })
     if tempo_stability < 0.60:
         issues.append({
             "code": "tempo_confidence_low",
             "severity": "medium",
-            "message": "?????????????",
-            "suggestion": "?????????????????????",
+            "message": "节奏估计稳定性较低，节拍相关判断需要谨慎参考。",
+            "suggestion": "建议使用更清晰的原始音频，或在节奏更明确的片段重新分析。",
         })
 
     return {
@@ -1047,8 +1338,10 @@ def run(
     u_f, _ = _build_feature(u_body, cfg)
 
     # coarse trim
-    t_fps = float(np.clip(float(__import__("json").loads(t_meta.read_text(encoding="utf-8")).get("fps_used", 30.0)), 1.0, 240.0))
-    u_fps = float(np.clip(float(__import__("json").loads(u_meta.read_text(encoding="utf-8")).get("fps_used", 30.0)), 1.0, 240.0))
+    t_meta_payload = json.loads(t_meta.read_text(encoding="utf-8"))
+    u_meta_payload = json.loads(u_meta.read_text(encoding="utf-8"))
+    t_fps = float(np.clip(float(t_meta_payload.get("fps_used", 30.0)), 1.0, 240.0))
+    u_fps = float(np.clip(float(u_meta_payload.get("fps_used", 30.0)), 1.0, 240.0))
 
     ts, te = _trim_range(_motion_energy(t_body), t_fps, cfg)
     us, ue = _trim_range(_motion_energy(u_body), u_fps, cfg)
@@ -1089,7 +1382,7 @@ def run(
     i_path = align.i_path + ts
     j_path = align.j_path + us
 
-    # mapping
+    # mapping used for stable playback sync / alignment confidence
     teacher_to_user, map_user_sec = _build_map(i_path, j_path, Tt=t_body.shape[0], fps_u=u_fps, fps_t=t_fps, cfg=cfg)
 
     bad_alignment = (
@@ -1109,23 +1402,49 @@ def run(
         teacher_to_user = np.clip(teacher_to_user, 0, max(0, Tu - 1))
         map_user_sec = (teacher_to_user.astype(np.float32) / max(1e-6, u_fps)).astype(np.float32)
 
-    # weighted/unweighted path error
+    audio_alignment = _estimate_audio_offset_sec(teacher_video_path, user_video_path, cfg)
+    if audio_alignment["reliable"]:
+        sync_offset_sec = float(audio_alignment["offset_sec"])
+        sync_source = "audio"
+    else:
+        sync_offset_sec = 0.0
+        sync_source = "zero_offset"
+
+    sync_user_frame = _build_sync_map(
+        Tt=t_body.shape[0],
+        fps_t=t_fps,
+        Tu=u_body_used.shape[0],
+        fps_u=u_fps,
+        offset_sec=sync_offset_sec,
+    )
+    matched_user_frame, matched_match_cost = _windowed_match_map(
+        t_feat=t_f,
+        u_feat=u_f_used,
+        t_body=t_body,
+        u_body=u_body_used,
+        tq=tq.frame_quality,
+        uq=uq.frame_quality,
+        sync_user_frame=sync_user_frame,
+        fps_u=u_fps,
+        cfg=cfg,
+    )
+    matched_user_sec = (matched_user_frame.astype(np.float32) / max(1e-6, u_fps)).astype(np.float32)
+
+    # alignment-path error kept for diagnostics/confidence only
     diff_feat = np.linalg.norm(t_f[i_path] - u_f_used[j_path], axis=1) / np.sqrt(t_f.shape[1])
     path_q = np.minimum(tq.frame_quality[i_path], uq.frame_quality[j_path])
     weighted_feat_err = diff_feat * np.clip(path_q, 0.05, 1.0)
-
-    err_curve = _aggregate_err(i_path, weighted_feat_err, t_f.shape[0]).astype(np.float32)
-
-    # per-frame top joints + weighted joint error
     Tt = t_body.shape[0]
     per_frame_top_idx = np.zeros((Tt, 5), dtype=np.int16)
     per_frame_top_err = np.zeros((Tt, 5), dtype=np.float32)
     per_frame_top_conf = np.zeros((Tt, 5), dtype=np.float32)
+    per_frame_feat_err = np.zeros(Tt, dtype=np.float32)
+    per_frame_match_quality = np.zeros(Tt, dtype=np.float32)
 
     jw = []
     ju = []
     for i in range(Tt):
-        j = int(np.clip(teacher_to_user[i], 0, u_body_used.shape[0] - 1))
+        j = int(np.clip(matched_user_frame[i], 0, u_body_used.shape[0] - 1))
         d = np.linalg.norm(t_body[i] - u_body_used[j], axis=1)
         conf = np.minimum(t_vis[i], u_vis[j])
         d = np.nan_to_num(d, nan=0.0, posinf=0.0, neginf=0.0)
@@ -1134,21 +1453,28 @@ def run(
         jw.append(float(np.mean(wd)))
         ju.append(float(np.mean(d)))
 
+        feat_err = float(np.linalg.norm(t_f[i] - u_f_used[j]) / np.sqrt(max(1, t_f.shape[1])))
+        feat_err *= float(1.0 + 0.2 * (1.0 - min(float(tq.frame_quality[i]), float(uq.frame_quality[j]))))
+        per_frame_feat_err[i] = feat_err
+        per_frame_match_quality[i] = float(min(float(tq.frame_quality[i]), float(uq.frame_quality[j])))
+
         order = np.argsort(-d)[:5]
         per_frame_top_idx[i] = order.astype(np.int16)
         per_frame_top_err[i] = d[order].astype(np.float32)
         per_frame_top_conf[i] = conf[order].astype(np.float32)
 
+    err_curve = per_frame_feat_err.astype(np.float32)
     mean_w_joint = float(np.mean(jw))
     mean_u_joint = float(np.mean(ju))
     mean_feat = float(np.nanmean(err_curve))
 
     expected_ratio = float((ue - us) / max(1, (te - ts)))
-    tempo_rel, tempo_conf, tempo_segments, tempo_dev_area = _tempo(
-        map_user_frame=teacher_to_user.astype(np.float32),
-        expected_ratio=expected_ratio,
+    tempo_rel, tempo_conf, tempo_segments, tempo_dev_area, timing_offset_sec = _tempo_from_windowed_matches(
+        sync_user_frame=sync_user_frame,
+        matched_user_frame=matched_user_frame,
         fps_t=t_fps,
-        frame_quality=tq.frame_quality,
+        fps_u=u_fps,
+        frame_quality=np.minimum(tq.frame_quality, per_frame_match_quality),
         cfg=cfg,
     )
 
@@ -1180,7 +1506,7 @@ def run(
     j_acc = np.zeros(33, dtype=np.float64)
     j_cnt = np.zeros(33, dtype=np.int32)
     for i in range(Tt):
-        j = int(np.clip(teacher_to_user[i], 0, u_body_used.shape[0] - 1))
+        j = int(np.clip(matched_user_frame[i], 0, u_body_used.shape[0] - 1))
         d = np.linalg.norm(t_body[i] - u_body_used[j], axis=1)
         ok = np.isfinite(d)
         j_acc[ok] += d[ok]
@@ -1208,6 +1534,7 @@ def run(
             top_rows.append({"joint": LM_NAMES[idx], "error": ev, "confidence": cf})
 
         tr = float(tempo_rel[i])
+        offset_sec = float(timing_offset_sec[i])
         if tr > cfg.tempo_fast_thr:
             tempo_text = "tempo_fast"
         elif tr < cfg.tempo_slow_thr:
@@ -1216,8 +1543,15 @@ def run(
             tempo_text = "tempo_ok"
 
         sev = "mild" if float(err_curve[i]) < mean_feat * 1.05 else ("clear" if float(err_curve[i]) < mean_feat * 1.35 else "severe")
-
-        advice = f"Focus on {top_rows[0]['joint']}, severity={sev}, tempo={tempo_text}."
+        lead_joint = top_rows[0]["joint"] if top_rows else "left_shoulder"
+        lead_joint_cn = _joint_to_cn(lead_joint)
+        if abs(offset_sec) <= cfg.tempo_offset_tolerance_sec:
+            timing_text = "节奏基本对齐"
+        elif offset_sec > 0:
+            timing_text = f"节奏偏慢，约慢了 {abs(offset_sec):.2f} 秒"
+        else:
+            timing_text = f"节奏偏快，约快了 {abs(offset_sec):.2f} 秒"
+        advice = f"当前重点看 {lead_joint_cn}，动作偏差等级为 {sev}，{timing_text}。"
         frame_analysis.append({
             "frame": i,
             "sec": float(i / t_fps),
@@ -1225,6 +1559,13 @@ def run(
             "frame_quality": float(tq.frame_quality[i]),
             "severity": sev,
             "tempo_rel": tr,
+            "timing_offset_sec": offset_sec,
+            "sync_user_frame": int(np.clip(round(float(sync_user_frame[i])), 0, max(0, u_body_used.shape[0] - 1))),
+            "sync_user_sec": float(sync_user_frame[i] / max(1e-6, u_fps)),
+            "matched_user_frame": int(np.clip(matched_user_frame[i], 0, max(0, u_body_used.shape[0] - 1))),
+            "matched_user_sec": float(matched_user_sec[i]),
+            "match_cost": float(matched_match_cost[i]),
+            "accuracy_match_mode": "windowed_local_search",
             "top_joints_at_frame": top_rows,
             "advice": advice,
         })
@@ -1236,6 +1577,8 @@ def run(
         "rate_min": cfg.sync_rate_min,
         "rate_max": cfg.sync_rate_max,
         "rate_gain": cfg.sync_rate_gain,
+        "timing_search_window_sec": cfg.local_match_window_sec,
+        "timing_tolerance_sec": cfg.tempo_offset_tolerance_sec,
     }
 
     beginner_report = _build_beginner_report(
@@ -1315,6 +1658,16 @@ def run(
             "cost": float(align.cost),
             "fallback_linear_map_applied": bool(bad_alignment),
         },
+        "audio_alignment": audio_alignment,
+        "timing_alignment": {
+            "sync_source": sync_source,
+            "sync_offset_sec": float(sync_offset_sec),
+            "search_window_sec": float(cfg.local_match_window_sec),
+            "tolerance_sec": float(cfg.tempo_offset_tolerance_sec),
+            "bad_offset_sec": float(cfg.tempo_offset_bad_sec),
+            "mean_abs_timing_offset_sec": float(np.mean(np.abs(timing_offset_sec))) if len(timing_offset_sec) else 0.0,
+            "median_abs_timing_offset_sec": float(np.median(np.abs(timing_offset_sec))) if len(timing_offset_sec) else 0.0,
+        },
         "scores": {
             "score_pose": score.score_pose,
             "score_tempo": score.score_tempo,
@@ -1354,6 +1707,8 @@ def run(
         "top_joints": top_joints,
         "fps_teacher": float(t_fps),
         "tempo_segments": tempo_segments,
+        "timing_offset_sec_mean": float(np.mean(timing_offset_sec)) if len(timing_offset_sec) else 0.0,
+        "timing_offset_sec_abs_mean": float(np.mean(np.abs(timing_offset_sec))) if len(timing_offset_sec) else 0.0,
     }
 
     dump_json(out_dir / "report.json", report)
@@ -1367,9 +1722,13 @@ def run(
         user_frames=np.int32(u_body_used.shape[0]),
         expected_ratio=np.float32(expected_ratio),
         teacher_to_user=teacher_to_user.astype(np.int32),
+        sync_user_frame=np.rint(sync_user_frame).astype(np.int32),
+        matched_user_frame=matched_user_frame.astype(np.int32),
         map_user_sec=map_user_sec.astype(np.float32),
+        matched_user_sec=matched_user_sec.astype(np.float32),
         err_curve=err_curve.astype(np.float32),
         tempo_rel=tempo_rel.astype(np.float32),
+        timing_offset_sec=timing_offset_sec.astype(np.float32),
         tempo_rel_confidence=tempo_conf.astype(np.float32),
         frame_quality=tq.frame_quality.astype(np.float32),
         top_idx=per_frame_top_idx.astype(np.int16),
@@ -1406,6 +1765,8 @@ def run(
         "confidence_score": confidence_summary["score"],
         "confidence_level": confidence_summary["level"],
         "confidence_summary": confidence_summary["summary"],
+        "audio_offset_sec": float(audio_alignment.get("offset_sec", 0.0) or 0.0),
+        "mean_abs_timing_offset_sec": float(np.mean(np.abs(timing_offset_sec))) if len(timing_offset_sec) else 0.0,
     }
     dump_json(out_dir / "summary.json", summary)
 

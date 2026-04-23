@@ -195,7 +195,8 @@ class PipelineTaskRepository:
                                 finished_at,
                                 score_total,
                                 confidence_score,
-                                updated_at
+                                updated_at,
+                                payload::text
                             FROM pipeline_tasks
                             WHERE status = %s
                             ORDER BY updated_at DESC
@@ -223,7 +224,8 @@ class PipelineTaskRepository:
                                 finished_at,
                                 score_total,
                                 confidence_score,
-                                updated_at
+                                updated_at,
+                                payload::text
                             FROM pipeline_tasks
                             ORDER BY updated_at DESC
                             LIMIT %s
@@ -235,6 +237,21 @@ class PipelineTaskRepository:
         except Exception as exc:
             self._logger.warning("PostgreSQL pipeline task summary query failed: %s", exc)
             return []
+
+    def delete(self, pipeline_id: str) -> bool:
+        pipeline_id = str(pipeline_id).strip()
+        if not pipeline_id:
+            return False
+        try:
+            with self._lock:
+                with self._connect() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute("DELETE FROM pipeline_tasks WHERE pipeline_id = %s", (pipeline_id,))
+                    conn.commit()
+            return True
+        except Exception as exc:
+            self._logger.warning("PostgreSQL pipeline task delete failed for %s: %s", pipeline_id, exc)
+            return False
 
     @staticmethod
     def _structured_task_row(task: dict[str, Any]) -> dict[str, Any]:
@@ -296,10 +313,27 @@ class PipelineTaskRepository:
 
     @staticmethod
     def _parse_summary_row(row: tuple[Any, ...]) -> dict[str, Any]:
+        payload: dict[str, Any] = {}
+        raw_payload = row[17] if len(row) > 17 else None
+        if raw_payload:
+            try:
+                loaded = json.loads(raw_payload)
+            except Exception:
+                loaded = {}
+            if isinstance(loaded, dict):
+                payload = loaded
+
+        def as_int(value: Any) -> int | None:
+            try:
+                return int(value)
+            except Exception:
+                return None
+
         return {
             "pipeline_id": row[0],
             "pair_name": row[1],
             "status": row[2],
+            "message": str(payload.get("message", "")).strip() or None,
             "stage": row[3],
             "progress": row[4],
             "teacher_video_id": row[5],
@@ -314,6 +348,10 @@ class PipelineTaskRepository:
             "score_total": row[14],
             "confidence_score": row[15],
             "updated_at": row[16].isoformat() if row[16] is not None else None,
+            "cancel_requested": bool(payload.get("cancel_requested")),
+            "cancel_requested_at": payload.get("cancel_requested_at"),
+            "timeout_sec": as_int(payload.get("timeout_sec")),
+            "timeout_at": payload.get("timeout_at"),
         }
 
 
@@ -519,6 +557,22 @@ class AnalysisReportRepository:
                     conn.commit()
         except Exception as exc:
             self._logger.warning("PostgreSQL analysis report repair failed: %s", exc)
+
+    def delete(self, pipeline_id: str) -> bool:
+        pipeline_id = str(pipeline_id).strip()
+        if not pipeline_id:
+            return False
+        try:
+            with self._lock:
+                with self._connect() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute("DELETE FROM pipeline_frame_analysis WHERE pipeline_id = %s", (pipeline_id,))
+                        cur.execute("DELETE FROM analysis_reports WHERE pipeline_id = %s", (pipeline_id,))
+                    conn.commit()
+            return True
+        except Exception as exc:
+            self._logger.warning("PostgreSQL analysis report delete failed for %s: %s", pipeline_id, exc)
+            return False
 
 
 class VideoRecordRepository:
@@ -768,3 +822,18 @@ class PipelineEventRepository:
         except Exception as exc:
             self._logger.warning("PostgreSQL pipeline failure stats query failed: %s", exc)
             return out
+
+    def delete(self, pipeline_id: str) -> bool:
+        pipeline_id = str(pipeline_id).strip()
+        if not pipeline_id:
+            return False
+        try:
+            with self._lock:
+                with self._connect() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute("DELETE FROM pipeline_task_events WHERE pipeline_id = %s", (pipeline_id,))
+                    conn.commit()
+            return True
+        except Exception as exc:
+            self._logger.warning("PostgreSQL pipeline event delete failed for %s: %s", pipeline_id, exc)
+            return False

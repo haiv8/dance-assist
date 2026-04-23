@@ -1,142 +1,282 @@
-﻿<template>
-  <main class="app-page upload-page">
-    <section class="surface-card page-head">
+<template>
+  <main class="app-page upload-page upload-workbench">
+    <section class="surface-card page-head upload-head">
       <div class="page-head-row">
         <div>
-          <h1>&#32032;&#26448;&#31649;&#29702;</h1>
-          <p class="page-subtitle">&#26412;&#39029;&#21482;&#20570;&#19977;&#20214;&#20107;&#65306;&#19978;&#20256;&#12289;&#31649;&#29702;&#12289;&#24555;&#36895;&#24102;&#20837;&#20998;&#26512;&#12290;</p>
+          <h1>素材库</h1>
+          <p class="page-subtitle">把上传、整理和带入分析放在同一个工作区，减少在多个页面之间来回切换。</p>
         </div>
         <div class="action-row">
-          <RouterLink class="link-button secondary-button" to="/compare">&#21069;&#24448;&#21160;&#20316;&#20998;&#26512;</RouterLink>
+          <button class="secondary-button" :disabled="listing" @click="loadAllContext">
+            {{ listing ? syncLoadingText : syncActionText }}
+          </button>
+          <RouterLink class="link-button" to="/compare">开始分析</RouterLink>
         </div>
       </div>
 
       <div class="status-strip">
-        <div class="status-cell"><span class="status-caption">&#32032;&#26448;&#24635;&#25968;</span><strong class="status-main">{{ items.length }}</strong></div>
-        <div class="status-cell"><span class="status-caption">&#25945;&#24072;&#32032;&#26448;</span><strong class="status-main">{{ teacherItems.length }}</strong></div>
-        <div class="status-cell"><span class="status-caption">&#23398;&#21592;&#32032;&#26448;</span><strong class="status-main">{{ userItems.length }}</strong></div>
-        <div class="status-cell emphasis"><span class="status-caption">&#25512;&#33616;&#29366;&#24577;</span><strong class="status-main">{{ inventoryHint }}</strong></div>
+        <div class="status-cell">
+          <span class="status-caption">素材总数</span>
+          <strong class="status-main">{{ items.length }}</strong>
+        </div>
+        <div class="status-cell">
+          <span class="status-caption">教师素材</span>
+          <strong class="status-main">{{ teacherItems.length }}</strong>
+        </div>
+        <div class="status-cell">
+          <span class="status-caption">学员素材</span>
+          <strong class="status-main">{{ userItems.length }}</strong>
+        </div>
+        <div class="status-cell emphasis">
+          <span class="status-caption">当前建议</span>
+          <strong class="status-main">{{ inventoryHint }}</strong>
+        </div>
       </div>
     </section>
 
-    <section class="selection-grid upload-grid">
-      <article class="surface-card">
+    <section class="upload-workspace">
+      <article class="surface-card upload-composer">
         <div class="panel-head compact-head">
           <div>
-            <h2>&#26412;&#27425;&#19978;&#20256;</h2>
-            <p class="helper-text">&#26032;&#19978;&#20256;&#21482;&#24433;&#21709;&#21491;&#20391;&#30340;&#26412;&#27425;&#32467;&#26524;&#65292;&#19981;&#20250;&#20882;&#20805;&#21382;&#21490;&#32032;&#26448;&#12290;</p>
+            <h2>新增素材</h2>
+            <p class="helper-text">先确定角色和名称，再把视频放入素材库。新上传的结果会立即出现在右侧推荐区。</p>
           </div>
         </div>
 
-        <div class="field-grid two-col-fields">
+        <div class="field-grid upload-fields">
           <div class="field-block">
-            <label class="field-label">&#35282;&#33394;</label>
+            <label class="field-label">角色</label>
             <select v-model="role">
-              <option value="teacher">&#25945;&#24072;&#31034;&#33539;</option>
-              <option value="user">&#23398;&#21592;&#32451;&#20064;</option>
+              <option value="teacher">教师示范</option>
+              <option value="user">学员练习</option>
             </select>
           </div>
           <div class="field-block">
-            <label class="field-label">&#32032;&#26448;&#21517;&#31216;</label>
+            <label class="field-label">素材名称</label>
             <input v-model.trim="name" type="text" :placeholder="namePlaceholder" />
           </div>
         </div>
 
-        <input :key="fileInputKey" class="file-input" type="file" accept=".mp4,.mov,.avi,.mkv,.m4v" @change="onFileChange" />
-        <p class="helper-text" style="margin-top: 10px;">{{ draftState }}</p>
-
-        <div class="action-row" style="margin-top: 16px;">
-          <button :disabled="uploading || !file" @click="submitUpload">{{ uploading ? uploadLoadingText : uploadActionText }}</button>
-          <button class="secondary-button" :disabled="listing" @click="loadAllContext">{{ listing ? syncLoadingText : syncActionText }}</button>
-          <button class="secondary-button" :disabled="uploading" @click="resetDraft">{{ resetActionText }}</button>
+        <div class="field-block">
+          <label class="field-label">视频文件</label>
+          <input
+            :key="fileInputKey"
+            class="file-input"
+            type="file"
+            accept=".mp4,.mov,.avi,.mkv,.m4v"
+            @change="onFileChange"
+          />
         </div>
 
-        <div v-if="error" class="feedback-inline" style="margin-top: 12px;">{{ error }}</div>
-        <div v-else-if="actionMessage" class="feedback-state" data-tone="loading" style="margin-top: 12px;">
+        <div class="draft-banner">
+          <strong>本次草稿</strong>
+          <span>{{ draftState }}</span>
+        </div>
+
+        <div class="action-row">
+          <button :disabled="uploading || !file" @click="submitUpload">
+            {{ uploading ? uploadLoadingText : uploadActionText }}
+          </button>
+          <button class="secondary-button" :disabled="uploading" @click="resetDraft">
+            {{ resetActionText }}
+          </button>
+        </div>
+
+        <div v-if="error" class="feedback-inline">{{ error }}</div>
+        <div v-else-if="actionMessage" class="feedback-state" data-tone="loading">
           <strong class="feedback-state-title">{{ actionDoneTitle }}</strong>
           <span class="feedback-state-copy">{{ actionMessage }}</span>
         </div>
       </article>
 
-      <article class="surface-card">
+      <article class="surface-card upload-brief">
         <div class="panel-head compact-head">
           <div>
-            <h2>&#26412;&#27425;&#32467;&#26524;&#19982;&#25512;&#33616;</h2>
-            <p class="helper-text">&#21487;&#20197;&#30452;&#25509;&#29992;&#26368;&#26032;&#19978;&#20256;&#12289;&#26368;&#36817;&#20351;&#29992;&#25110;&#25512;&#33616;&#37197;&#23545;&#36827;&#20837;&#20998;&#26512;&#12290;</p>
+            <h2>快速带入分析</h2>
+            <p class="helper-text">上传完成后，可以直接复用最近配对、系统推荐配对，或者把本次上传立刻送去分析。</p>
           </div>
         </div>
 
-        <div class="summary-stack">
-          <div class="summary-row"><span>&#26412;&#27425;&#19978;&#20256;</span><strong>{{ result?.filename || emptyText }}</strong></div>
-          <div class="summary-row"><span>&#26368;&#36817;&#20351;&#29992;</span><strong>{{ recentTask?.pair_name || emptyText }}</strong></div>
-          <div class="summary-row"><span>&#25512;&#33616;&#25945;&#24072;</span><strong>{{ newestTeacher?.filename || emptyTeacherText }}</strong></div>
-          <div class="summary-row"><span>&#25512;&#33616;&#23398;&#21592;</span><strong>{{ newestUser?.filename || emptyUserText }}</strong></div>
+        <div class="brief-grid">
+          <div class="brief-card">
+            <span>本次上传</span>
+            <strong>{{ result?.filename || emptyText }}</strong>
+          </div>
+          <div class="brief-card">
+            <span>最近配对</span>
+            <strong>{{ recentTask?.pair_name || emptyText }}</strong>
+          </div>
+          <div class="brief-card">
+            <span>推荐教师</span>
+            <strong>{{ newestTeacher?.filename || emptyTeacherText }}</strong>
+          </div>
+          <div class="brief-card">
+            <span>推荐学员</span>
+            <strong>{{ newestUser?.filename || emptyUserText }}</strong>
+          </div>
         </div>
 
-        <div class="action-row" style="margin-top: 16px;">
-          <button class="secondary-button" :disabled="!canUseRecentTask" @click="useRecentTaskPair">&#29992;&#26368;&#36817;&#37197;&#23545;</button>
-          <button class="secondary-button" :disabled="!canUseRecommendedPair" @click="useRecommendedPair">&#29992;&#25512;&#33616;&#37197;&#23545;</button>
-          <button class="secondary-button" :disabled="!result" @click="openLatestInCompare">&#29992;&#26412;&#27425;&#32467;&#26524;</button>
+        <div class="quick-action-stack">
+          <button class="secondary-button" :disabled="!canUseRecentTask" @click="useRecentTaskPair">
+            使用最近配对
+          </button>
+          <button class="secondary-button" :disabled="!canUseRecommendedPair" @click="useRecommendedPair">
+            使用推荐配对
+          </button>
+          <button class="secondary-button" :disabled="!result" @click="openLatestInCompare">
+            用本次上传继续
+          </button>
         </div>
       </article>
     </section>
 
-    <section class="selection-grid library-grid">
-      <article class="surface-card">
-        <div class="panel-head compact-head"><h2>&#25945;&#24072;&#32032;&#26448;&#24211;</h2></div>
-        <div v-if="!teacherItems.length" class="feedback-state" data-tone="empty">
-          <strong class="feedback-state-title">&#26242;&#26080;&#25945;&#24072;&#32032;&#26448;</strong>
+    <section class="surface-card library-workspace">
+      <div class="panel-head compact-head library-head">
+        <div>
+          <h2>素材工作区</h2>
+          <p class="helper-text">按角色分开管理素材，常用动作集中在每一条记录里，减少视线来回跳转。</p>
         </div>
-        <ul v-else class="list-clean asset-list-simple">
-          <li v-for="item in teacherItems" :key="item.video_id" class="asset-item-simple">
-            <div class="asset-main">
-              <template v-if="editingVideoId === item.video_id">
-                <input v-model.trim="editingName" type="text" class="asset-input" :placeholder="renamePlaceholder" />
-              </template>
-              <template v-else>
-                <strong>{{ item.filename }}</strong>
-              </template>
-              <span class="helper-text">{{ formatDate(item.uploaded_at) }} · {{ formatBytes(item.size_bytes) }}</span>
-            </div>
-            <div class="asset-actions">
-              <button class="secondary-button" @click="openInCompare(item)">{{ useInCompareText }}</button>
-              <a class="link-button secondary-button" :href="absMediaUrl(item.url)" target="_blank">{{ openText }}</a>
-              <button v-if="editingVideoId !== item.video_id" class="secondary-button" :disabled="busyVideoId === item.video_id" @click="startRename(item)">{{ renameText }}</button>
-              <button v-else class="secondary-button" :disabled="busyVideoId === item.video_id || !editingName" @click="saveRename(item)">{{ saveText }}</button>
-              <button v-if="editingVideoId === item.video_id" class="ghost-button" :disabled="busyVideoId === item.video_id" @click="cancelRename">{{ cancelText }}</button>
-              <button class="ghost-button danger-text" :disabled="busyVideoId === item.video_id" @click="removeItem(item)">{{ deleteText }}</button>
-            </div>
-          </li>
-        </ul>
-      </article>
+        <div class="library-summary">
+          <span>教师 {{ teacherItems.length }}</span>
+          <span>学员 {{ userItems.length }}</span>
+        </div>
+      </div>
 
-      <article class="surface-card">
-        <div class="panel-head compact-head"><h2>&#23398;&#21592;&#32032;&#26448;&#24211;</h2></div>
-        <div v-if="!userItems.length" class="feedback-state" data-tone="empty">
-          <strong class="feedback-state-title">&#26242;&#26080;&#23398;&#21592;&#32032;&#26448;</strong>
-        </div>
-        <ul v-else class="list-clean asset-list-simple">
-          <li v-for="item in userItems" :key="item.video_id" class="asset-item-simple">
-            <div class="asset-main">
-              <template v-if="editingVideoId === item.video_id">
-                <input v-model.trim="editingName" type="text" class="asset-input" :placeholder="renamePlaceholder" />
-              </template>
-              <template v-else>
-                <strong>{{ item.filename }}</strong>
-              </template>
-              <span class="helper-text">{{ formatDate(item.uploaded_at) }} · {{ formatBytes(item.size_bytes) }}</span>
-            </div>
-            <div class="asset-actions">
-              <button class="secondary-button" @click="openInCompare(item)">{{ useInCompareText }}</button>
-              <a class="link-button secondary-button" :href="absMediaUrl(item.url)" target="_blank">{{ openText }}</a>
-              <button v-if="editingVideoId !== item.video_id" class="secondary-button" :disabled="busyVideoId === item.video_id" @click="startRename(item)">{{ renameText }}</button>
-              <button v-else class="secondary-button" :disabled="busyVideoId === item.video_id || !editingName" @click="saveRename(item)">{{ saveText }}</button>
-              <button v-if="editingVideoId === item.video_id" class="ghost-button" :disabled="busyVideoId === item.video_id" @click="cancelRename">{{ cancelText }}</button>
-              <button class="ghost-button danger-text" :disabled="busyVideoId === item.video_id" @click="removeItem(item)">{{ deleteText }}</button>
-            </div>
-          </li>
-        </ul>
-      </article>
+      <div class="library-columns">
+        <article class="library-panel">
+          <div class="library-panel-head">
+            <strong>教师素材</strong>
+            <span class="helper-text">示范视频会优先作为分析左侧输入。</span>
+          </div>
+
+          <div v-if="!teacherItems.length" class="feedback-state" data-tone="empty">
+            <strong class="feedback-state-title">暂无教师素材</strong>
+            <span class="feedback-state-copy">先补入教师示范视频，后续推荐配对才会完整。</span>
+          </div>
+
+          <ul v-else class="list-clean asset-list-dense">
+            <li v-for="item in teacherItems" :key="item.video_id" class="asset-row">
+              <div class="asset-row-main">
+                <template v-if="editingVideoId === item.video_id">
+                  <input
+                    v-model.trim="editingName"
+                    type="text"
+                    class="asset-input"
+                    :placeholder="renamePlaceholder"
+                  />
+                </template>
+                <template v-else>
+                  <strong>{{ item.filename }}</strong>
+                </template>
+                <span class="helper-text">{{ formatDate(item.uploaded_at) }} · {{ formatBytes(item.size_bytes) }}</span>
+              </div>
+
+              <div class="asset-row-actions">
+                <button class="secondary-button" @click="openInCompare(item)">{{ useInCompareText }}</button>
+                <a class="link-button secondary-button" :href="absMediaUrl(item.url)" target="_blank">{{ openText }}</a>
+                <button
+                  v-if="editingVideoId !== item.video_id"
+                  class="secondary-button"
+                  :disabled="busyVideoId === item.video_id"
+                  @click="startRename(item)"
+                >
+                  {{ renameText }}
+                </button>
+                <button
+                  v-else
+                  class="secondary-button"
+                  :disabled="busyVideoId === item.video_id || !editingName"
+                  @click="saveRename(item)"
+                >
+                  {{ saveText }}
+                </button>
+                <button
+                  v-if="editingVideoId === item.video_id"
+                  class="ghost-button"
+                  :disabled="busyVideoId === item.video_id"
+                  @click="cancelRename"
+                >
+                  {{ cancelText }}
+                </button>
+                <button
+                  class="ghost-button danger-text"
+                  :disabled="busyVideoId === item.video_id"
+                  @click="removeItem(item)"
+                >
+                  {{ deleteText }}
+                </button>
+              </div>
+            </li>
+          </ul>
+        </article>
+
+        <article class="library-panel">
+          <div class="library-panel-head">
+            <strong>学员素材</strong>
+            <span class="helper-text">练习视频会优先作为分析右侧输入。</span>
+          </div>
+
+          <div v-if="!userItems.length" class="feedback-state" data-tone="empty">
+            <strong class="feedback-state-title">暂无学员素材</strong>
+            <span class="feedback-state-copy">补入学员练习后，就可以直接进入动作对照分析。</span>
+          </div>
+
+          <ul v-else class="list-clean asset-list-dense">
+            <li v-for="item in userItems" :key="item.video_id" class="asset-row">
+              <div class="asset-row-main">
+                <template v-if="editingVideoId === item.video_id">
+                  <input
+                    v-model.trim="editingName"
+                    type="text"
+                    class="asset-input"
+                    :placeholder="renamePlaceholder"
+                  />
+                </template>
+                <template v-else>
+                  <strong>{{ item.filename }}</strong>
+                </template>
+                <span class="helper-text">{{ formatDate(item.uploaded_at) }} · {{ formatBytes(item.size_bytes) }}</span>
+              </div>
+
+              <div class="asset-row-actions">
+                <button class="secondary-button" @click="openInCompare(item)">{{ useInCompareText }}</button>
+                <a class="link-button secondary-button" :href="absMediaUrl(item.url)" target="_blank">{{ openText }}</a>
+                <button
+                  v-if="editingVideoId !== item.video_id"
+                  class="secondary-button"
+                  :disabled="busyVideoId === item.video_id"
+                  @click="startRename(item)"
+                >
+                  {{ renameText }}
+                </button>
+                <button
+                  v-else
+                  class="secondary-button"
+                  :disabled="busyVideoId === item.video_id || !editingName"
+                  @click="saveRename(item)"
+                >
+                  {{ saveText }}
+                </button>
+                <button
+                  v-if="editingVideoId === item.video_id"
+                  class="ghost-button"
+                  :disabled="busyVideoId === item.video_id"
+                  @click="cancelRename"
+                >
+                  {{ cancelText }}
+                </button>
+                <button
+                  class="ghost-button danger-text"
+                  :disabled="busyVideoId === item.video_id"
+                  @click="removeItem(item)"
+                >
+                  {{ deleteText }}
+                </button>
+              </div>
+            </li>
+          </ul>
+        </article>
+      </div>
     </section>
   </main>
 </template>
@@ -192,10 +332,10 @@ const namePlaceholder = computed(() => (role.value === "teacher" ? "例如：教
 const inventoryHint = computed(() => {
   if (!teacherItems.value.length) return "先补入教师示范";
   if (!userItems.value.length) return "再补入学员练习";
-  return "已可直接开始对照";
+  return "已经可以直接开始对照";
 });
 const draftState = computed(() => {
-  if (!file.value) return "当前还没有选择文件，右侧不会再拿历史素材冒充本次上传结果。";
+  if (!file.value) return "当前还没有选择文件，右侧推荐区不会再拿历史素材冒充本次上传结果。";
   return `当前将以“${roleText(role.value)}”角色入库：${file.value.name}`;
 });
 
@@ -286,7 +426,7 @@ async function submitUpload() {
     file.value = null;
     name.value = "";
     fileInputKey.value += 1;
-    actionMessage.value = "素材已入库，素材库与推荐配对已同步更新。";
+    actionMessage.value = "素材已入库，素材库和推荐配对已经同步更新。";
     await loadAllContext();
   } catch (err: any) {
     error.value = err?.response?.data?.detail ?? err?.message ?? "上传失败";
@@ -383,12 +523,19 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.upload-grid,
-.library-grid {
-  align-items: start;
+.upload-workbench,
+.upload-workspace,
+.library-workspace,
+.library-columns {
+  display: grid;
+  gap: 16px;
 }
 
-.two-col-fields {
+.upload-workspace {
+  grid-template-columns: minmax(0, 1.1fr) minmax(320px, 0.9fr);
+}
+
+.upload-fields {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
@@ -396,52 +543,98 @@ onMounted(() => {
   width: 100%;
 }
 
-.summary-stack {
+.draft-banner {
+  display: grid;
+  gap: 6px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: rgba(247, 249, 252, 0.88);
+}
+
+.brief-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.brief-card {
+  display: grid;
+  gap: 6px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.brief-card span {
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+.quick-action-stack {
   display: grid;
   gap: 10px;
 }
 
-.summary-row {
+.library-head {
+  align-items: center;
+}
+
+.library-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+
+.library-columns {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.library-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.library-panel-head {
   display: flex;
   justify-content: space-between;
+  align-items: baseline;
   gap: 12px;
   padding-bottom: 10px;
-  border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
 }
 
-.summary-row:last-child {
-  padding-bottom: 0;
-  border-bottom: 0;
-}
-
-.asset-list-simple {
+.asset-list-dense {
   gap: 10px;
 }
 
-.asset-item-simple {
-  display: flex;
-  justify-content: space-between;
+.asset-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 14px;
   padding: 14px 0;
-  border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
 }
 
-.asset-item-simple:last-child {
+.asset-row:last-child {
   border-bottom: 0;
 }
 
-.asset-main {
+.asset-row-main {
   display: grid;
   gap: 4px;
   min-width: 0;
-  flex: 1;
 }
 
-.asset-main strong {
+.asset-row-main strong {
   word-break: break-all;
 }
 
-.asset-actions {
+.asset-row-actions {
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
@@ -456,21 +649,27 @@ onMounted(() => {
   color: #b42318;
 }
 
-@media (max-width: 900px) {
-  .two-col-fields {
+@media (max-width: 1120px) {
+  .upload-workspace,
+  .library-columns {
     grid-template-columns: 1fr;
   }
 }
 
-@media (max-width: 720px) {
-  .summary-row,
-  .asset-item-simple {
-    flex-direction: column;
-    align-items: stretch;
+@media (max-width: 760px) {
+  .upload-fields,
+  .brief-grid,
+  .asset-row {
+    grid-template-columns: 1fr;
   }
 
-  .asset-actions {
+  .asset-row-actions {
     justify-content: flex-start;
+  }
+
+  .library-panel-head {
+    flex-direction: column;
+    align-items: flex-start;
   }
 }
 </style>

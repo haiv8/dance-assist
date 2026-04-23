@@ -4,6 +4,7 @@ import json
 import shutil
 import subprocess
 import threading
+import time
 import traceback
 import uuid
 from datetime import datetime, timezone
@@ -16,6 +17,7 @@ from fastapi import HTTPException
 from app.services.pipeline_executor import get_pipeline_executor_backend, submit_pipeline_job
 from app.services.storage import get_video_meta
 from app.services.task_store import (
+    delete_pipeline_record,
     get_pipeline_failure_stats as load_pipeline_failure_stats,
     list_analysis_reports as load_analysis_report_summaries,
     list_task_summaries as load_task_summaries,
@@ -87,6 +89,17 @@ def _load_task_from_storage(pipeline_id: str) -> dict[str, Any] | None:
     if task:
         return task
     return _load_task_from_disk(pipeline_id)
+
+
+def _drop_task_file(pipeline_id: str) -> bool:
+    path = _task_json_path(pipeline_id)
+    if not path.exists():
+        return False
+    try:
+        path.unlink()
+        return True
+    except Exception:
+        return False
 
 
 def _utc_now() -> str:
@@ -180,6 +193,54 @@ def _cancel_if_requested(pipeline_id: str, *, executor: str | None = None) -> bo
         return False
     _mark_task_canceled(pipeline_id, executor=executor)
     return True
+
+
+def _normalize_timeout_sec(timeout_sec: int | None) -> int | None:
+    try:
+        value = int(timeout_sec or 0)
+    except Exception:
+        return None
+    return value if value > 0 else None
+
+
+def _raise_if_pipeline_timeout(
+    pipeline_id: str,
+    *,
+    started_monotonic: float,
+    timeout_sec: int | None,
+    executor: str | None = None,
+    stage: str | None = None,
+) -> None:
+    normalized_timeout = _normalize_timeout_sec(timeout_sec)
+    if normalized_timeout is None:
+        return
+    elapsed_sec = time.monotonic() - started_monotonic
+    if elapsed_sec <= normalized_timeout:
+        return
+    stage_label = stage or "processing"
+    task = _set_task(
+        pipeline_id,
+        {
+            "stage": stage_label,
+            "message": f"pipeline timed out after {int(elapsed_sec)}s during {stage_label}",
+            "error_type": "timeout",
+            "timeout_sec": normalized_timeout,
+            "timeout_at": _utc_now(),
+        },
+    )
+    _record_pipeline_event(
+        pipeline_id,
+        "timeout_detected",
+        status=str(task.get("status", "running")).strip() or "running",
+        message=f"pipeline timed out after {int(elapsed_sec)}s during {stage_label}",
+        executor=executor,
+        payload={
+            "timeout_sec": normalized_timeout,
+            "elapsed_sec": round(elapsed_sec, 3),
+            "stage": stage_label,
+        },
+    )
+    raise TimeoutError(f"pipeline exceeded timeout of {normalized_timeout}s during {stage_label}")
 
 
 def _set_task(pipeline_id: str, patch: dict[str, Any]) -> dict[str, Any]:
@@ -341,13 +402,23 @@ def _pipeline_worker(
     raise_on_error: bool = False,
     attempt_count: int | None = None,
     executor_backend: str | None = None,
+    timeout_sec: int | None = None,
 ) -> bool:
     current_attempt = _normalize_attempt_count(attempt_count)
     resolved_executor = executor_backend or get_pipeline_executor_backend()
+    resolved_timeout_sec = _normalize_timeout_sec(timeout_sec if timeout_sec is not None else settings.PIPELINE_JOB_TIMEOUT_SEC)
+    started_monotonic = time.monotonic()
 
     try:
         if _cancel_if_requested(pipeline_id, executor=resolved_executor):
             return False
+        _raise_if_pipeline_timeout(
+            pipeline_id,
+            started_monotonic=started_monotonic,
+            timeout_sec=resolved_timeout_sec,
+            executor=resolved_executor,
+            stage="preparing_inputs",
+        )
 
         _update_task_progress(
             pipeline_id,
@@ -361,6 +432,8 @@ def _pipeline_worker(
             attempt_count=current_attempt,
             retry_count=max(0, current_attempt - 1),
             error_type=None,
+            timeout_sec=resolved_timeout_sec,
+            timeout_at=None,
         )
         _record_pipeline_event(
             pipeline_id,
@@ -368,7 +441,7 @@ def _pipeline_worker(
             status="running",
             message="pipeline started",
             executor=resolved_executor,
-            payload={"attempt_count": current_attempt},
+            payload={"attempt_count": current_attempt, "timeout_sec": resolved_timeout_sec},
         )
 
         teacher_meta = get_video_meta(teacher_video_id, role="teacher")
@@ -395,6 +468,13 @@ def _pipeline_worker(
 
         if _cancel_if_requested(pipeline_id, executor=resolved_executor):
             return False
+        _raise_if_pipeline_timeout(
+            pipeline_id,
+            started_monotonic=started_monotonic,
+            timeout_sec=resolved_timeout_sec,
+            executor=resolved_executor,
+            stage="extracting_pose",
+        )
 
         _update_task_progress(
             pipeline_id,
@@ -426,6 +506,13 @@ def _pipeline_worker(
 
         if _cancel_if_requested(pipeline_id, executor=resolved_executor):
             return False
+        _raise_if_pipeline_timeout(
+            pipeline_id,
+            started_monotonic=started_monotonic,
+            timeout_sec=resolved_timeout_sec,
+            executor=resolved_executor,
+            stage="aligning_motion",
+        )
 
         _update_task_progress(
             pipeline_id,
@@ -445,6 +532,13 @@ def _pipeline_worker(
 
         if _cancel_if_requested(pipeline_id, executor=resolved_executor):
             return False
+        _raise_if_pipeline_timeout(
+            pipeline_id,
+            started_monotonic=started_monotonic,
+            timeout_sec=resolved_timeout_sec,
+            executor=resolved_executor,
+            stage="rendering_outputs",
+        )
 
         _update_task_progress(
             pipeline_id,
@@ -463,6 +557,13 @@ def _pipeline_worker(
 
         if _cancel_if_requested(pipeline_id, executor=resolved_executor):
             return False
+        _raise_if_pipeline_timeout(
+            pipeline_id,
+            started_monotonic=started_monotonic,
+            timeout_sec=resolved_timeout_sec,
+            executor=resolved_executor,
+            stage="packaging_results",
+        )
 
         _update_task_progress(
             pipeline_id,
@@ -527,7 +628,7 @@ def _pipeline_worker(
             status="done",
             message="pipeline completed",
             executor=resolved_executor,
-            payload={"pair_name": pair_name, "attempt_count": current_attempt},
+            payload={"pair_name": pair_name, "attempt_count": current_attempt, "timeout_sec": resolved_timeout_sec},
         )
 
         _cleanup_old_output_pairs(exclude_pair=pair_name)
@@ -552,7 +653,7 @@ def _pipeline_worker(
             status="failed",
             message=f"{type(exc).__name__}: {exc}",
             executor=resolved_executor,
-            payload={"error_type": error_type, "attempt_count": current_attempt},
+            payload={"error_type": error_type, "attempt_count": current_attempt, "timeout_sec": resolved_timeout_sec},
         )
         if raise_on_error:
             raise
@@ -598,50 +699,90 @@ def request_pipeline_cancel(pipeline_id: str) -> dict[str, Any]:
     return pipeline_status_payload(task, pipeline_id)
 
 
-def run_pipeline(teacher_video_id: str, user_video_id: str, overwrite: bool = False) -> dict[str, Any]:
-    teacher_meta = get_video_meta(teacher_video_id, role="teacher")
-    user_meta = get_video_meta(user_video_id, role="user")
+def remove_pipeline_task(pipeline_id: str) -> dict[str, Any]:
+    pipeline_id = str(pipeline_id).strip()
+    if not pipeline_id:
+        raise HTTPException(status_code=400, detail="pipeline id is required")
 
-    pipeline_id = uuid.uuid4().hex[:16]
-    pair_name = f"teacher_{teacher_meta['video_id']}_vs_user_{user_meta['video_id']}"
+    task = _load_task_from_storage(pipeline_id)
+    if task is None:
+        with _TASK_LOCK:
+            task = _TASKS.get(pipeline_id)
+    if task is None:
+        raise HTTPException(status_code=404, detail=f"pipeline not found: {pipeline_id}")
 
+    status = str(task.get("status", "")).strip()
+    if status in {"pending", "running"}:
+        raise HTTPException(status_code=409, detail="running task cannot be deleted")
+
+    record_deleted = delete_pipeline_record(pipeline_id)
+    file_deleted = _drop_task_file(pipeline_id)
+    with _TASK_LOCK:
+        removed = _TASKS.pop(pipeline_id, None)
+
+    if removed is None and not record_deleted and not file_deleted:
+        raise HTTPException(status_code=404, detail=f"pipeline not found: {pipeline_id}")
+
+    return {
+        "ok": True,
+        "pipeline_id": pipeline_id,
+        "message": "pipeline deleted",
+    }
+
+
+def _enqueue_pipeline_task(
+    pipeline_id: str,
+    *,
+    pair_name: str,
+    teacher_video_id: str,
+    user_video_id: str,
+    overwrite: bool,
+    event_type: str = "queued",
+    event_message: str = "pipeline queued",
+    event_payload: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     executor_backend = get_pipeline_executor_backend()
-    _set_task(
-        pipeline_id,
-        {
-            "pair_name": pair_name,
-            "status": "pending",
-            "stage": "queued",
-            "progress": 0.0,
-            "message": "queued",
-            "teacher_video_id": teacher_video_id,
-            "user_video_id": user_video_id,
-            "queued_at": _utc_now(),
-            "started_at": None,
-            "finished_at": None,
-            "executor": executor_backend,
-            "attempt_count": 1,
-            "retry_count": 0,
-            "error_type": None,
-            "report": None,
-            "timeline": None,
-            "files": None,
-            "cancel_requested": False,
-            "cancel_requested_at": None,
-        },
-    )
+    timeout_sec = _normalize_timeout_sec(settings.PIPELINE_JOB_TIMEOUT_SEC)
+    task_patch = {
+        "pair_name": pair_name,
+        "status": "pending",
+        "stage": "queued",
+        "progress": 0.0,
+        "message": event_message,
+        "teacher_video_id": teacher_video_id,
+        "user_video_id": user_video_id,
+        "queued_at": _utc_now(),
+        "started_at": None,
+        "finished_at": None,
+        "executor": executor_backend,
+        "attempt_count": 1,
+        "retry_count": 0,
+        "error_type": None,
+        "report": None,
+        "timeline": None,
+        "files": None,
+        "cancel_requested": False,
+        "cancel_requested_at": None,
+        "timeout_sec": timeout_sec,
+        "timeout_at": None,
+    }
+    _set_task(pipeline_id, task_patch)
+    payload = {
+        "teacher_video_id": teacher_video_id,
+        "user_video_id": user_video_id,
+        "overwrite": overwrite,
+        "attempt_count": 1,
+        "timeout_sec": timeout_sec,
+    }
+    if event_payload:
+        payload.update(event_payload)
     _record_pipeline_event(
         pipeline_id,
-        "queued",
+        event_type,
         status="pending",
-        message="pipeline queued",
+        message=event_message,
         executor=executor_backend,
-        payload={
-            "teacher_video_id": teacher_video_id,
-            "user_video_id": user_video_id,
-            "overwrite": overwrite,
-            "attempt_count": 1,
-        },
+        payload=payload,
     )
 
     try:
@@ -663,16 +804,76 @@ def run_pipeline(teacher_video_id: str, user_video_id: str, overwrite: bool = Fa
             finished_at=_utc_now(),
             error_type=error_type,
         )
+        failure_payload = {
+            "error_type": error_type,
+            "attempt_count": 1,
+            "timeout_sec": timeout_sec,
+            "source_event": event_type,
+        }
+        if event_payload:
+            failure_payload.update(event_payload)
         _record_pipeline_event(
             pipeline_id,
             "submit_failed",
             status="failed",
             message=f"{type(exc).__name__}: {exc}",
             executor=executor_backend,
-            payload={"error_type": error_type, "attempt_count": 1},
+            payload=failure_payload,
         )
         raise
     return _get_task(pipeline_id)
+
+
+def request_pipeline_retry(pipeline_id: str, overwrite: bool = False) -> dict[str, Any]:
+    task = _get_task(pipeline_id)
+    status = str(task.get("status", "")).strip()
+    if status in {"pending", "running"}:
+        raise HTTPException(status_code=409, detail="pipeline is still running")
+
+    teacher_video_id = str(task.get("teacher_video_id", "")).strip()
+    user_video_id = str(task.get("user_video_id", "")).strip()
+    if not teacher_video_id or not user_video_id:
+        raise HTTPException(status_code=400, detail="pipeline retry requires teacher/user video ids")
+
+    teacher_meta = get_video_meta(teacher_video_id, role="teacher")
+    user_meta = get_video_meta(user_video_id, role="user")
+    pair_name = f"teacher_{teacher_meta['video_id']}_vs_user_{user_meta['video_id']}"
+    previous_status = status or None
+    previous_attempt_count = task.get("attempt_count")
+    previous_retry_count = task.get("retry_count")
+    previous_error_type = task.get("error_type")
+
+    return _enqueue_pipeline_task(
+        pipeline_id,
+        pair_name=pair_name,
+        teacher_video_id=teacher_video_id,
+        user_video_id=user_video_id,
+        overwrite=overwrite,
+        event_type="manual_retry_queued",
+        event_message="pipeline manually re-queued",
+        event_payload={
+            "previous_status": previous_status,
+            "previous_attempt_count": previous_attempt_count,
+            "previous_retry_count": previous_retry_count,
+            "previous_error_type": previous_error_type,
+            "retry_origin": "manual",
+        },
+    )
+
+
+def run_pipeline(teacher_video_id: str, user_video_id: str, overwrite: bool = False) -> dict[str, Any]:
+    teacher_meta = get_video_meta(teacher_video_id, role="teacher")
+    user_meta = get_video_meta(user_video_id, role="user")
+
+    pipeline_id = uuid.uuid4().hex[:16]
+    pair_name = f"teacher_{teacher_meta['video_id']}_vs_user_{user_meta['video_id']}"
+    return _enqueue_pipeline_task(
+        pipeline_id,
+        pair_name=pair_name,
+        teacher_video_id=teacher_video_id,
+        user_video_id=user_video_id,
+        overwrite=overwrite,
+    )
 
 
 def list_pipeline_tasks(limit: int = 50, status: str | None = None) -> dict[str, Any]:

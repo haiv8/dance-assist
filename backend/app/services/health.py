@@ -1,5 +1,6 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
+import json
 import shutil
 from datetime import datetime, timezone
 from pathlib import Path
@@ -35,6 +36,7 @@ def _check_app_home() -> dict[str, Any]:
         'ok': True,
         'path': str(path),
         'writable': writable,
+        'detail': f'app home ready ({path})',
     }
 
 
@@ -54,6 +56,7 @@ def _check_disk() -> dict[str, Any]:
         'free_gb': free_gb,
         'used_percent': used_percent,
         'min_free_gb': settings.MIN_FREE_DISK_GB,
+        'detail': f'free {free_gb} GB / total {total_gb} GB',
     }
 
 
@@ -62,13 +65,15 @@ def _check_model_file() -> dict[str, Any]:
     legacy_model = settings.LEGACY_MODELS_DIR / 'pose_landmarker_full.task'
     path = runtime_model if runtime_model.exists() else legacy_model
     exists = path.exists()
+    size_bytes = path.stat().st_size if exists else 0
     return {
         'status': 'pass' if exists else 'fail',
         'ok': exists,
         'path': str(path),
         'runtime_path': str(runtime_model),
         'legacy_path': str(legacy_model),
-        'size_bytes': path.stat().st_size if exists else 0,
+        'size_bytes': size_bytes,
+        'detail': f'model ready ({round(size_bytes / (1024 ** 2), 2)} MB)' if exists else 'pose model file is missing',
     }
 
 
@@ -82,6 +87,7 @@ def _check_postgresql() -> dict[str, Any]:
             'enabled': False,
             'required': required,
             'backend': task_store.backend_name,
+            'detail': 'database disabled',
         }
 
     try:
@@ -98,6 +104,7 @@ def _check_postgresql() -> dict[str, Any]:
             'backend': task_store.backend_name,
             'database': row[0] if row else None,
             'user': row[1] if row else None,
+            'detail': f'connected to {row[0]} as {row[1]}' if row else 'database connection ok',
         }
     except Exception as exc:
         return {
@@ -110,6 +117,16 @@ def _check_postgresql() -> dict[str, Any]:
         }
 
 
+def _parse_heartbeat(raw: str | None) -> dict[str, Any]:
+    if not raw:
+        return {}
+    try:
+        payload = json.loads(raw)
+    except Exception:
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
 def _check_redis() -> dict[str, Any]:
     enabled = bool(settings.REDIS_URL)
     required = settings.PIPELINE_EXECUTOR == 'redis_queue'
@@ -120,6 +137,8 @@ def _check_redis() -> dict[str, Any]:
             'enabled': False,
             'required': required,
             'queue': settings.REDIS_PIPELINE_QUEUE,
+            'dead_letter_queue': settings.REDIS_PIPELINE_DEAD_LETTER_QUEUE,
+            'detail': 'redis disabled',
         }
 
     try:
@@ -128,14 +147,53 @@ def _check_redis() -> dict[str, Any]:
         client = redis.Redis.from_url(settings.REDIS_URL, decode_responses=True)
         pong = bool(client.ping())
         pending_jobs = int(client.llen(settings.REDIS_PIPELINE_QUEUE))
+        dead_letter_jobs = int(client.llen(settings.REDIS_PIPELINE_DEAD_LETTER_QUEUE))
+        heartbeat = _parse_heartbeat(client.get(settings.REDIS_WORKER_HEARTBEAT_KEY))
+        heartbeat_updated_at = heartbeat.get('updated_at')
+        heartbeat_age_sec: float | None = None
+        worker_alive: bool | None = None
+        if isinstance(heartbeat_updated_at, str) and heartbeat_updated_at:
+            try:
+                heartbeat_dt = datetime.fromisoformat(heartbeat_updated_at.replace('Z', '+00:00'))
+                heartbeat_age_sec = max(0.0, (datetime.now(timezone.utc) - heartbeat_dt.astimezone(timezone.utc)).total_seconds())
+                worker_alive = heartbeat_age_sec <= max(10, int(settings.REDIS_WORKER_HEARTBEAT_TTL_SEC) * 1.5)
+            except Exception:
+                heartbeat_age_sec = None
+                worker_alive = False if required else None
+        elif required:
+            worker_alive = False
+
+        backlog_state = 'idle'
+        if dead_letter_jobs > 0:
+            backlog_state = f'dead-letter {dead_letter_jobs}'
+        elif pending_jobs > 0:
+            backlog_state = f'pending {pending_jobs}'
+
+        ok = pong and (not required or bool(worker_alive))
+        detail_parts = [backlog_state]
+        if heartbeat_age_sec is not None:
+            detail_parts.append(f'heartbeat {heartbeat_age_sec:.1f}s ago')
+        elif required:
+            detail_parts.append('worker heartbeat missing')
+        detail = ', '.join(detail_parts)
+
         return {
-            'status': 'pass' if pong else 'fail',
-            'ok': pong,
+            'status': 'pass' if ok else 'fail',
+            'ok': ok,
             'enabled': True,
             'required': required,
             'queue': settings.REDIS_PIPELINE_QUEUE,
+            'dead_letter_queue': settings.REDIS_PIPELINE_DEAD_LETTER_QUEUE,
             'pending_jobs': pending_jobs,
+            'dead_letter_jobs': dead_letter_jobs,
+            'worker_heartbeat_key': settings.REDIS_WORKER_HEARTBEAT_KEY,
+            'worker_alive': worker_alive,
+            'worker_state': heartbeat.get('state'),
+            'worker_pipeline_id': heartbeat.get('pipeline_id'),
+            'worker_updated_at': heartbeat_updated_at,
+            'worker_age_sec': round(heartbeat_age_sec, 3) if heartbeat_age_sec is not None else None,
             'url': settings.REDIS_URL,
+            'detail': detail,
         }
     except Exception as exc:
         return {
@@ -144,6 +202,7 @@ def _check_redis() -> dict[str, Any]:
             'enabled': True,
             'required': required,
             'queue': settings.REDIS_PIPELINE_QUEUE,
+            'dead_letter_queue': settings.REDIS_PIPELINE_DEAD_LETTER_QUEUE,
             'url': settings.REDIS_URL,
             'detail': f'{type(exc).__name__}: {exc}',
         }

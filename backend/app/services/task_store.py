@@ -425,6 +425,15 @@ def load_task_record(pipeline_id: str) -> dict[str, Any] | None:
     _ensure_task_store_ready()
     return task_repository.load(pipeline_id)
 
+def delete_pipeline_record(pipeline_id: str) -> bool:
+    _ensure_task_store_ready()
+    if not task_store.is_available:
+        return False
+    report_deleted = report_repository.delete(pipeline_id)
+    event_deleted = event_repository.delete(pipeline_id)
+    task_deleted = task_repository.delete(pipeline_id)
+    return task_deleted or report_deleted or event_deleted
+
 def get_task_store_backend() -> str:
     _ensure_task_store_ready()
     return task_store.backend_name

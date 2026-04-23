@@ -1,109 +1,113 @@
 <template>
-  <main class="app-page compare-page">
-    <section class="surface-card page-head">
+  <main class="app-page compare-page compare-workbench">
+    <section class="surface-card page-head compare-head">
       <div class="page-head-row">
         <div>
           <h1>动作分析</h1>
-          <p class="page-subtitle">选择教师示范与学员练习，系统会生成同步回放和问题摘要。</p>
+          <p class="page-subtitle">把这页收成一个主工作区：左边配置，右边对照舞台，下方结果与复盘。</p>
         </div>
         <button class="secondary-button" :disabled="loading" @click="loadList">
-          {{ loading ? '刷新中...' : '同步素材库' }}
+          {{ loading ? "刷新中..." : "同步素材库" }}
         </button>
       </div>
-      <div class="status-strip analysis-strip">
-        <div class="status-cell">
-          <span class="status-caption">流程状态</span>
-          <strong class="status-main">{{ pipelineStatusText }}</strong>
+
+      <div class="compare-kpi-row">
+        <div class="compare-kpi-card">
+          <span>流程状态</span>
+          <strong>{{ pipelineStatusText }}</strong>
         </div>
-        <div class="status-cell">
-          <span class="status-caption">问题点</span>
-          <strong class="status-main">{{ markerDots.length }}</strong>
+        <div class="compare-kpi-card">
+          <span>问题点</span>
+          <strong>{{ markerDots.length }}</strong>
         </div>
-        <div class="status-cell">
-          <span class="status-caption">当前总分</span>
-          <strong class="status-main">{{ result ? overallScore.toFixed(1) : '--' }}</strong>
+        <div class="compare-kpi-card">
+          <span>当前总分</span>
+          <strong>{{ result ? overallScore.toFixed(1) : "--" }}</strong>
         </div>
-        <div class="status-cell emphasis">
-          <span class="status-caption">流程提示</span>
-          <strong class="status-main">{{ analysisFeedbackText }}</strong>
+        <div class="compare-kpi-card emphasis">
+          <span>流程提示</span>
+          <strong>{{ analysisFeedbackText }}</strong>
         </div>
       </div>
     </section>
 
-    <section class="selection-grid">
-      <article class="surface-card">
-        <div class="panel-head compact-head">
-          <div>
-            <h2>分析配置</h2>
-            <p class="helper-text">先确认本轮对照素材，再发起分析任务。</p>
-          </div>
-        </div>
-
-        <div class="field-grid two-col-fields">
-          <div class="field-block">
-            <label class="field-label">教师视频</label>
-            <select v-model="teacherId">
-              <option value="">请选择教师示范视频</option>
-              <option v-for="item in teacherItems" :key="item.video_id" :value="item.video_id">
-                {{ item.filename }}
-              </option>
-            </select>
+    <section class="analysis-workbench">
+      <aside class="analysis-rail">
+        <article class="surface-card analysis-config-card">
+          <div class="panel-head compact-head">
+            <div>
+              <h2>分析配置</h2>
+              <p class="helper-text">先确认本轮对照素材，再发起分析任务。</p>
+            </div>
           </div>
 
-          <div class="field-block">
-            <label class="field-label">学员视频</label>
-            <select v-model="userId">
-              <option value="">请选择学员练习视频</option>
-              <option v-for="item in userItems" :key="item.video_id" :value="item.video_id">
-                {{ item.filename }}
-              </option>
-            </select>
+          <div class="field-grid">
+            <div class="field-block">
+              <label class="field-label">教师视频</label>
+              <select v-model="teacherId">
+                <option value="">请选择教师示范视频</option>
+                <option v-for="item in teacherItems" :key="item.video_id" :value="item.video_id">
+                  {{ item.filename }}
+                </option>
+              </select>
+            </div>
+
+            <div class="field-block">
+              <label class="field-label">学员视频</label>
+              <select v-model="userId">
+                <option value="">请选择学员练习视频</option>
+                <option v-for="item in userItems" :key="item.video_id" :value="item.video_id">
+                  {{ item.filename }}
+                </option>
+              </select>
+            </div>
           </div>
-        </div>
 
-        <label class="simple-check">
-          <input type="checkbox" v-model="overwrite" />
-          <span>覆盖历史结果</span>
-        </label>
+          <label class="simple-check">
+            <input type="checkbox" v-model="overwrite" />
+            <span>覆盖历史结果</span>
+          </label>
 
-        <div class="action-row" style="margin-top: 16px;">
-          <button :disabled="!teacherId || !userId || analyzing" @click="startAnalysis">
-            {{ analyzing ? '分析进行中...' : '发起分析' }}
-          </button>
-          <button class="ghost-button" :disabled="!canCancelCurrentPipeline || cancelingPipeline" @click="cancelCurrentPipeline">
-            {{ cancelingPipeline ? "\u53d6\u6d88\u4e2d..." : "\u53d6\u6d88\u5f53\u524d\u4efb\u52a1" }}
-          </button>
-        </div>
-
-        <div v-if="error" class="feedback-inline" style="margin-top: 12px;">{{ error }}</div>
-      </article>
-
-      <article class="surface-card">
-        <div class="panel-head compact-head">
-          <div>
-            <h2>本轮组合</h2>
-            <p class="helper-text">发起前再次确认本轮分析对象。</p>
+          <div class="action-row rail-actions">
+            <button :disabled="!teacherId || !userId || analyzing" @click="startAnalysis">
+              {{ analyzing ? "分析进行中..." : "发起分析" }}
+            </button>
+            <button class="ghost-button" :disabled="!canCancelCurrentPipeline || cancelingPipeline" @click="cancelCurrentPipeline">
+              {{ cancelingPipeline ? "取消中..." : "取消当前任务" }}
+            </button>
           </div>
-        </div>
 
-        <div v-if="loading && !items.length" class="feedback-state" data-tone="loading">
-          <strong class="feedback-state-title">素材库正在同步</strong>
-          <span class="feedback-state-copy">系统正在读取教师与学员素材，完成后会自动补齐默认组合。</span>
-        </div>
+          <div v-if="error" class="feedback-inline">{{ error }}</div>
+        </article>
 
-        <div v-else class="summary-stack">
-          <div class="summary-row">
-            <span>&#25945;&#24072;&#32032;&#26448;</span>
-            <strong>{{ selectedTeacherLabel }}</strong>
+        <article class="surface-card analysis-session-card">
+          <div class="panel-head compact-head">
+            <div>
+              <h2>当前组合</h2>
+              <p class="helper-text">这里保留本轮素材和任务摘要，避免视线来回跳。</p>
+            </div>
           </div>
-          <div class="summary-row">
-            <span>&#23398;&#21592;&#32032;&#26448;</span>
-            <strong>{{ selectedUserLabel }}</strong>
+
+          <div v-if="loading && !items.length" class="feedback-state" data-tone="loading">
+            <strong class="feedback-state-title">素材库同步中</strong>
+            <span class="feedback-state-copy">正在读取教师与学员素材，完成后会自动补齐默认组合。</span>
           </div>
-          <div class="summary-row">
-            <span>&#20219;&#21153; ID</span>
-            <strong>{{ pipelineId || '&#23578;&#26410;&#21019;&#24314;&#20219;&#21153;' }}</strong>
+
+          <div v-else class="summary-stack compact-summary">
+            <div class="summary-row">
+              <span>教师素材</span>
+              <strong>{{ selectedTeacherLabel }}</strong>
+            </div>
+            <div class="summary-row">
+              <span>学员素材</span>
+              <strong>{{ selectedUserLabel }}</strong>
+            </div>
+            <div class="summary-row">
+              <span>任务 ID</span>
+              <strong>{{ pipelineId || "尚未创建任务" }}</strong>
+            </div>
           </div>
+
           <div v-if="pipelineId" class="progress-card">
             <div class="progress-head">
               <strong>{{ pipelineStageText }}</strong>
@@ -112,107 +116,114 @@
             <div class="progress-track"><div class="progress-fill" :style="{ width: `${pipelineProgressPercent}%` }"></div></div>
             <p class="helper-text progress-copy">{{ pipelineMessage || analysisHint }}</p>
           </div>
-        </div>
-      </article>
-    </section>
+        </article>
+      </aside>
 
-    <section class="players-grid">
-      <article class="video-panel">
+      <section class="surface-card analysis-stage-card">
         <div class="panel-head compact-head">
           <div>
-            <h2>教师示范</h2>
-            <p class="helper-text">{{ selectedTeacherLabel }}</p>
+            <h2>对照舞台</h2>
+            <p class="helper-text">播放器和时间轴都收在同一块，方便边看边定位问题点。</p>
           </div>
         </div>
-        <div class="player-frame">
-          <video
-            v-if="displayTeacherUrl"
-            ref="teacherRef"
-            :src="displayTeacherUrl"
-            :muted="teacherMuted"
-            controls
-            class="player"
-            @loadedmetadata="refreshDuration"
-            @timeupdate="onTeacherTimeUpdate"
-            @play="onTeacherPlay"
-            @pause="onTeacherPause"
-          ></video>
-          <div v-else class="empty-panel">
-            <div class="feedback-state" data-tone="empty">
-              <strong class="feedback-state-title">教师示范尚未就绪</strong>
-              <span class="feedback-state-copy">先选择教师示范视频，左侧播放器才会进入同步回放区状态。</span>
-            </div>
-          </div>
-        </div>
-      </article>
 
-      <article class="video-panel">
-        <div class="panel-head compact-head">
-          <div>
-            <h2>学员练习</h2>
-            <p class="helper-text">{{ selectedUserLabel }}</p>
-          </div>
-        </div>
-        <div class="player-frame">
-          <video
-            v-if="displayUserUrl"
-            ref="userRef"
-            :src="displayUserUrl"
-            :muted="userMuted"
-            controls
-            class="player"
-            @loadedmetadata="refreshDuration"
-          ></video>
-          <div v-else class="empty-panel">
-            <div class="feedback-state" data-tone="empty">
-              <strong class="feedback-state-title">学员练习未就绪</strong>
-              <span class="feedback-state-copy">选择学员练习视频后，系统会自动准备双视频对照。</span>
+        <div class="video-compare-grid">
+          <article class="video-panel compact-stage-panel">
+            <div class="panel-head compact-head">
+              <div>
+                <h3>教师示范</h3>
+                <p class="helper-text">{{ selectedTeacherLabel }}</p>
+              </div>
             </div>
+            <div class="player-frame">
+              <video
+                v-if="displayTeacherUrl"
+                ref="teacherRef"
+                :src="displayTeacherUrl"
+                :muted="teacherMuted"
+                controls
+                class="player"
+                @loadedmetadata="refreshDuration"
+                @timeupdate="onTeacherTimeUpdate"
+                @play="onTeacherPlay"
+                @pause="onTeacherPause"
+              ></video>
+              <div v-else class="empty-panel">
+                <div class="feedback-state" data-tone="empty">
+                  <strong class="feedback-state-title">教师示范尚未就绪</strong>
+                  <span class="feedback-state-copy">先选择教师示范视频，左侧播放器才会进入对照状态。</span>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <article class="video-panel compact-stage-panel">
+            <div class="panel-head compact-head">
+              <div>
+                <h3>学员练习</h3>
+                <p class="helper-text">{{ selectedUserLabel }}</p>
+              </div>
+            </div>
+            <div class="player-frame">
+              <video
+                v-if="displayUserUrl"
+                ref="userRef"
+                :src="displayUserUrl"
+                :muted="userMuted"
+                controls
+                class="player"
+                @loadedmetadata="refreshDuration"
+              ></video>
+              <div v-else class="empty-panel">
+                <div class="feedback-state" data-tone="empty">
+                  <strong class="feedback-state-title">学员练习尚未就绪</strong>
+                  <span class="feedback-state-copy">选择学员练习视频后，系统会自动准备双视频对照。</span>
+                </div>
+              </div>
+            </div>
+          </article>
+        </div>
+
+        <div class="stage-timeline" v-if="displayTeacherUrl && displayUserUrl">
+          <div class="stage-timeline-head">
+            <strong>同步时间轴</strong>
+            <span>{{ currentTime.toFixed(2) }}s / {{ duration.toFixed(2) }}s</span>
+          </div>
+
+          <div class="timeline-actions compact-timeline-actions">
+            <button class="secondary-button" @click="togglePlay">{{ playing ? "暂停" : "播放" }}</button>
+            <button class="secondary-button" @click="stepBy(-1)">-1s</button>
+            <button class="secondary-button" @click="stepBy(1)">+1s</button>
+            <button class="secondary-button" :disabled="!markerDots.length" @click="jumpPrevMarker">上一处问题</button>
+            <button class="secondary-button" :disabled="!markerDots.length" @click="jumpNextMarker">下一处问题</button>
+            <button class="ghost-button" @click="toggleTeacherMute">{{ teacherMuted ? "取消教师静音" : "教师静音" }}</button>
+            <button class="ghost-button" @click="toggleUserMute">{{ userMuted ? "取消学员静音" : "学员静音" }}</button>
+            <button class="ghost-button" @click="toggleAllMute">{{ allMuted ? "取消全部静音" : "全部静音" }}</button>
+          </div>
+
+          <div class="timeline-track" @click="onTrackClick">
+            <div class="timeline-fill" :style="{ width: `${duration > 0 ? (currentTime / duration) * 100 : 0}%` }"></div>
+            <button
+              v-for="marker in markerDots"
+              :key="`track_${marker.frame}_${marker.type}`"
+              class="track-marker"
+              :class="markerClass(marker.type)"
+              :style="{ left: `${marker.leftPct}%` }"
+              :title="`${markerLabel(marker.type)} ${marker.sec.toFixed(2)}s${marker.severity ? ` | ${severityText(marker.severity)}` : ''}`"
+              @click.stop="seekToMarker(marker.sec, marker.frame)"
+            >
+              ·
+            </button>
           </div>
         </div>
-      </article>
+      </section>
     </section>
 
-    <section class="timeline-card" v-if="displayTeacherUrl && displayUserUrl">
-      <div class="panel-head compact-head">
-        <div>
-          <h2>同步回放区</h2>
-          <p class="helper-text">{{ currentTime.toFixed(2) }}s / {{ duration.toFixed(2) }}s</p>
-        </div>
-      </div>
-
-      <div class="timeline-actions">
-        <button class="secondary-button" @click="togglePlay">{{ playing ? '暂停' : '播放' }}</button>
-        <button class="secondary-button" @click="stepBy(-1)">-1s</button>
-        <button class="secondary-button" @click="stepBy(1)">+1s</button>
-        <button class="secondary-button" :disabled="!markerDots.length" @click="jumpPrevMarker">定位上一处问题</button>
-        <button class="secondary-button" :disabled="!markerDots.length" @click="jumpNextMarker">定位下一处问题</button>
-        <button class="ghost-button" @click="toggleTeacherMute">{{ teacherMuted ? '取消教师音轨静音' : '教师音轨静音' }}</button>
-        <button class="ghost-button" @click="toggleUserMute">{{ userMuted ? '取消学员音轨静音' : '学员音轨静音' }}</button>
-        <button class="ghost-button" @click="toggleAllMute">{{ allMuted ? '取消全部静音' : '全部静音' }}</button>
-      </div>
-
-      <div class="timeline-track" @click="onTrackClick">
-        <div class="timeline-fill" :style="{ width: `${duration > 0 ? (currentTime / duration) * 100 : 0}%` }"></div>
-        <button
-          v-for="marker in markerDots"
-          :key="`track_${marker.frame}_${marker.type}`"
-          class="track-marker"
-          :class="markerClass(marker.type)"
-          :style="{ left: `${marker.leftPct}%` }"
-          :title="`${markerLabel(marker.type)} ${marker.sec.toFixed(2)}s${marker.severity ? ` | ${severityText(marker.severity)}` : ''}`"
-          @click.stop="seekToMarker(marker.sec, marker.frame)"
-        >
-          •
-        </button>
-      </div>
-    </section>
-
-    <section class="result-card" v-if="result || analyzing || pipelineStatus === 'pending' || pipelineStatus === 'running'">
+    <section class="result-card analysis-results" v-if="result || analyzing || pipelineStatus === 'pending' || pipelineStatus === 'running'">
       <div class="panel-head compact-head">
         <div>
           <h2>分析结果</h2>
-          <p class="helper-text">{{ result?.pair_name || '本轮分析完成后，结果会展示在这里。' }}</p>
+          <p class="helper-text">{{ result?.pair_name || "本轮分析完成后，结果会显示在这里。" }}</p>
         </div>
         <div class="mode-switch" v-if="result">
           <button class="secondary-button" :class="{ activeMode: analysisMode === 'overall' }" @click="analysisMode = 'overall'">概览</button>
@@ -229,24 +240,56 @@
 
       <template v-else-if="analysisMode === 'overall'">
         <div class="metric-row compact-stats result-metrics">
-          <div class="metric-chip"><strong>&#24635;&#20998;</strong><span>{{ overallScore.toFixed(2) }}</span></div>
-          <div class="metric-chip"><strong>&#21160;&#20316;</strong><span>{{ poseScore.toFixed(2) }}</span></div>
-          <div class="metric-chip"><strong>&#33410;&#22863;</strong><span>{{ tempoScore.toFixed(2) }}</span></div>
-          <div class="metric-chip"><strong>&#21487;&#20449;&#24230;</strong><span>{{ confidenceScoreText }}</span></div>
+          <div class="metric-chip"><strong>总分</strong><span>{{ overallScore.toFixed(2) }}</span></div>
+          <div class="metric-chip"><strong>动作</strong><span>{{ poseScore.toFixed(2) }}</span></div>
+          <div class="metric-chip"><strong>节奏</strong><span>{{ tempoScore.toFixed(2) }}</span></div>
+          <div class="metric-chip"><strong>可信度</strong><span>{{ confidenceScoreText }}</span></div>
         </div>
 
-        <div class="selection-grid" style="margin-top: 16px;">
+        <div class="analysis-result-grid">
           <article class="surface-card sub-card simple-card">
-            <h3>&#25972;&#20307;&#24314;&#35758;</h3>
+            <div class="result-section-head">
+              <h3>整体判断</h3>
+              <span class="tag" :class="confidenceTone">{{ confidenceLevelText }}</span>
+            </div>
             <p class="helper-text focus-copy">{{ overallAdvice }}</p>
+
+            <div class="summary-stack compact-summary">
+              <div class="summary-row">
+                <span>高误差关节</span>
+                <strong>{{ topJointSummary }}</strong>
+              </div>
+              <div class="summary-row">
+                <span>节奏区间</span>
+                <strong>{{ tempoSegmentSummary }}</strong>
+              </div>
+            </div>
+
+            <div class="list-item-card" v-if="confidenceSummaryText">
+              <strong>可信度说明</strong>
+              <span class="helper-text">{{ confidenceSummaryText }}</span>
+            </div>
           </article>
 
           <article class="surface-card sub-card simple-card">
-            <div class="confidence-head">
-              <h3>Analysis &#21487;&#20449;&#24230;</h3>
-              <span class="tag" :class="confidenceTone">{{ confidenceLevelText }}</span>
+            <div class="result-section-head">
+              <h3>问题聚焦</h3>
+              <button v-if="problemHighlights.length" class="secondary-button" type="button" @click="restoreNormalPlayback">恢复 1.0x</button>
             </div>
-            <p class="helper-text focus-copy">{{ confidenceSummaryText }}</p>
+
+            <div v-if="problemHighlights.length" class="focus-marker-list compact-marker-list">
+              <button
+                v-for="marker in problemHighlights"
+                :key="`focus_${marker.frame}_${marker.type}`"
+                type="button"
+                class="focus-marker-item"
+                @click="focusMarker(marker)"
+              >
+                <strong>{{ markerLabel(marker.type) }} · {{ Number(marker.sec).toFixed(2) }}s</strong>
+                <span class="helper-text">{{ markerFocusCopy(marker) }}</span>
+              </button>
+            </div>
+
             <ul v-if="confidenceIssues.length" class="list-clean confidence-list">
               <li v-for="issue in confidenceIssues" :key="issue.code || issue.message" class="list-item-card">
                 <strong>{{ issue.message }}</strong>
@@ -256,41 +299,10 @@
           </article>
         </div>
 
-        <div class="selection-grid" style="margin-top: 16px;">
-          <article class="surface-card sub-card simple-card">
-            <h3>&#37325;&#28857;&#21457;&#29616;</h3>
-            <ul class="list-clean">
-              <li class="list-item-card"><strong>&#39640;&#35823;&#24046;&#20851;&#33410;</strong><span class="helper-text">{{ topJointSummary }}</span></li>
-              <li class="list-item-card"><strong>&#33410;&#22863; windows</strong><span class="helper-text">{{ tempoSegmentSummary }}</span></li>
-            </ul>
-          </article>
-          <article class="surface-card sub-card simple-card" v-if="problemHighlights.length">
-            <div class="panel-head compact-head">
-              <div>
-                <h3>Focus replay</h3>
-                <p class="helper-text">Click an issue to jump there and replay at 0.5x speed.</p>
-              </div>
-              <button class="secondary-button" type="button" @click="restoreNormalPlayback">1.0x</button>
-            </div>
-            <div class="focus-marker-list">
-              <button
-                v-for="marker in problemHighlights"
-                :key="`focus_${marker.frame}_${marker.type}`"
-                type="button"
-                class="focus-marker-item"
-                @click="focusMarker(marker)"
-              >
-                <strong>{{ markerLabel(marker.type) }} ? {{ Number(marker.sec).toFixed(2) }}s</strong>
-                <span class="helper-text">{{ markerFocusCopy(marker) }}</span>
-              </button>
-            </div>
-          </article>
-        </div>
-
-        <article class="surface-card sub-card simple-card" v-if="result.report?.beginner_report?.summary || result.report?.teaching_report?.summary" style="margin-top: 16px;">
-          <h3>&#35757;&#32451;&#24314;&#35758;</h3>
-          <p class="helper-text" v-if="result.report?.beginner_report?.summary">&#23398;&#21592;&#21453;&#39304;&#65306; {{ result.report.beginner_report.summary }}</p>
-          <p class="helper-text" v-if="result.report?.teaching_report?.summary">&#25945;&#23398;&#24314;&#35758;&#65306; {{ result.report.teaching_report.summary }}</p>
+        <article class="surface-card sub-card simple-card compact-training-card" v-if="result.report?.beginner_report?.summary || result.report?.teaching_report?.summary">
+          <h3>训练建议</h3>
+          <p class="helper-text" v-if="result.report?.beginner_report?.summary">学员反馈：{{ result.report.beginner_report.summary }}</p>
+          <p class="helper-text" v-if="result.report?.teaching_report?.summary">教学建议：{{ result.report.teaching_report.summary }}</p>
         </article>
       </template>
 
@@ -301,12 +313,15 @@
         </div>
 
         <div v-else-if="currentFrameInfo" class="surface-card sub-card simple-card">
-          <div class="metric-row compact-stats">
+          <div class="metric-row compact-stats local-frame-grid">
             <div class="metric-chip"><strong>帧号</strong><span>{{ currentFrameInfo.frame }}</span></div>
             <div class="metric-chip"><strong>时间</strong><span>{{ Number(currentFrameInfo.sec).toFixed(2) }}s</span></div>
             <div class="metric-chip"><strong>误差</strong><span>{{ Number(currentFrameInfo.frame_error ?? 0).toFixed(4) }}</span></div>
+            <div class="metric-chip"><strong>节奏偏差</strong><span>{{ timingOffsetText(currentFrameInfo.timing_offset_sec) }}</span></div>
+            <div class="metric-chip"><strong>匹配帧</strong><span>{{ currentFrameInfo.matched_user_frame ?? "--" }}</span></div>
+            <div class="metric-chip"><strong>匹配时间</strong><span>{{ formatSecondsMaybe(currentFrameInfo.matched_user_sec) }}</span></div>
           </div>
-          <p class="helper-text focus-copy" style="margin-top: 16px;">{{ currentFrameInfo.advice }}</p>
+          <p class="helper-text focus-copy frame-advice">{{ currentFrameInfo.advice }}</p>
         </div>
 
         <div v-else class="feedback-state" data-tone="empty">
@@ -324,13 +339,30 @@
     </section>
   </main>
 </template>
+
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import { absMediaUrl } from "../api/http";
-import { cancelPipeline, getPipelineFrameDetail, getPipelineFrameRange, getPipelineResult, getPipelineResultSummary, getPipelineStatus, runPipeline } from "../api/pipelines";
+import {
+  cancelPipeline,
+  getPipelineFrameDetail,
+  getPipelineFrameRange,
+  getPipelineResult,
+  getPipelineResultSummary,
+  getPipelineStatus,
+  runPipeline,
+} from "../api/pipelines";
+import { normalizedConfidenceIssues, normalizedConfidenceSummary } from "../utils/confidence";
 import { listVideos } from "../api/videos";
-import type { PipelineFrameRangeResponse, PipelineResultResponse, PipelineRunResponse, PipelineStatusResponse, PipelineStatusType, VideoItem } from "../types/video";
+import type {
+  PipelineFrameRangeResponse,
+  PipelineResultResponse,
+  PipelineRunResponse,
+  PipelineStatusResponse,
+  PipelineStatusType,
+  VideoItem,
+} from "../types/video";
 
 const route = useRoute();
 
@@ -372,10 +404,10 @@ const canCancelCurrentPipeline = computed(() => {
   return (pipelineStatus.value === "pending" || pipelineStatus.value === "running") && !cancelRequested.value;
 });
 const analysisHint = computed(() => {
-  if (!teacherId.value || !userId.value) return "\u5148\u9009\u62e9\u6559\u5e08\u548c\u5b66\u5458\u7d20\u6750";
-  if (analyzing.value || pipelineStatus.value === "pending" || pipelineStatus.value === "running") return "\u5206\u6790\u8fdb\u884c\u4e2d\uff0c\u7ed3\u679c\u4f1a\u81ea\u52a8\u5237\u65b0";
-  if (!result.value) return "\u5f53\u524d\u7ec4\u5408\u5df2\u5c31\u7eea\uff0c\u53ef\u4ee5\u5f00\u59cb\u5206\u6790";
-  return "\u7ed3\u679c\u5df2\u751f\u6210\uff0c\u53ef\u56de\u653e\u5e76\u5b9a\u4f4d\u95ee\u9898\u70b9";
+  if (!teacherId.value || !userId.value) return "先选择教师和学员素材";
+  if (analyzing.value || pipelineStatus.value === "pending" || pipelineStatus.value === "running") return "分析进行中，结果会自动刷新";
+  if (!result.value) return "当前组合已就绪，可以开始分析";
+  return "结果已生成，可以回放并定位问题点";
 });
 const analysisFeedbackText = computed(() => {
   if (error.value) return error.value;
@@ -408,7 +440,12 @@ const markers = computed(() => {
   if (!Array.isArray(list)) return [];
   return list as Array<{ frame: number; sec: number; type: string; severity?: string }>;
 });
-const markerDots = computed(() => markers.value.map((item) => ({ ...item, leftPct: duration.value > 1e-6 ? Math.max(0, Math.min(100, (item.sec / duration.value) * 100)) : 0 })));
+const markerDots = computed(() =>
+  markers.value.map((item) => ({
+    ...item,
+    leftPct: duration.value > 1e-6 ? Math.max(0, Math.min(100, (item.sec / duration.value) * 100)) : 0,
+  })),
+);
 const problemHighlights = computed(() => {
   const severityRank: Record<string, number> = { severe: 3, clear: 2, mild: 1 };
   return [...markerDots.value]
@@ -420,8 +457,12 @@ const problemHighlights = computed(() => {
     .slice(0, 6);
 });
 
-const mapUserSecArr = computed<number[]>(() => Array.isArray(result.value?.timeline?.map_user_sec) ? result.value!.timeline!.map_user_sec.map((value: any) => Number(value)) : []);
-const teacherToUserArr = computed<number[]>(() => Array.isArray(result.value?.timeline?.teacher_to_user) ? result.value!.timeline!.teacher_to_user.map((value: any) => Number(value)) : []);
+const mapUserSecArr = computed<number[]>(() =>
+  Array.isArray(result.value?.timeline?.map_user_sec) ? result.value.timeline.map_user_sec.map((value: any) => Number(value)) : [],
+);
+const teacherToUserArr = computed<number[]>(() =>
+  Array.isArray(result.value?.timeline?.teacher_to_user) ? result.value.timeline.teacher_to_user.map((value: any) => Number(value)) : [],
+);
 const fpsTeacher = computed<number>(() => {
   const value = Number(result.value?.timeline?.fps_teacher ?? result.value?.report?.fps_teacher ?? 30);
   return Number.isFinite(value) && value > 0 ? value : 30;
@@ -434,7 +475,7 @@ const fpsUser = computed<number>(() => {
 const frameAnalysisCount = computed<number>(() => {
   const count = Number(result.value?.report?.frame_analysis_count);
   if (Number.isFinite(count) && count > 0) return Math.floor(count);
-  return Array.isArray(result.value?.report?.frame_analysis) ? result.value!.report!.frame_analysis.length : 0;
+  return Array.isArray(result.value?.report?.frame_analysis) ? result.value.report.frame_analysis.length : 0;
 });
 const currentFrameIndex = computed<number | null>(() => {
   if (frameAnalysisCount.value <= 0) return null;
@@ -462,8 +503,8 @@ const topJointSummary = computed(() => {
 });
 const tempoSegmentSummary = computed(() => {
   const list = result.value?.report?.tempo_segments;
-  if (!Array.isArray(list) || list.length === 0) return "\u6682\u65e0\u660e\u663e\u8282\u594f\u5f02\u5e38\u533a\u95f4\u3002";
-  return `\u5171 ${list.length} \u6bb5\u9700\u8981\u91cd\u70b9\u590d\u76d8\u7684\u8282\u594f\u5f02\u5e38\u7247\u6bb5\u3002`;
+  if (!Array.isArray(list) || list.length === 0) return "暂无明显节奏异常区间。";
+  return `共 ${list.length} 段需要重点复盘的节奏异常片段。`;
 });
 const confidenceData = computed<Record<string, any> | null>(() => {
   const confidence = result.value?.report?.confidence;
@@ -471,9 +512,9 @@ const confidenceData = computed<Record<string, any> | null>(() => {
 });
 const confidenceLevelText = computed(() => {
   const level = String(confidenceData.value?.level ?? "");
-  if (level === "high") return "\u9ad8";
-  if (level === "medium") return "\u4e2d";
-  if (level === "low") return "\u4f4e";
+  if (level === "high") return "高";
+  if (level === "medium") return "中";
+  if (level === "low") return "低";
   return "--";
 });
 const confidenceScoreText = computed(() => {
@@ -481,11 +522,8 @@ const confidenceScoreText = computed(() => {
   if (!Number.isFinite(score)) return "--";
   return `${Math.round(score * 100)}%`;
 });
-const confidenceSummaryText = computed(() => confidenceData.value?.summary ?? "&#21487;&#20449;&#24230; is estimated from tracking quality, alignment stability, and tempo reliability.");
-const confidenceIssues = computed<any[]>(() => {
-  const issues = confidenceData.value?.issues;
-  return Array.isArray(issues) ? issues : [];
-});
+const confidenceSummaryText = computed(() => normalizedConfidenceSummary(confidenceData.value));
+const confidenceIssues = computed<any[]>(() => normalizedConfidenceIssues(confidenceData.value));
 const confidenceTone = computed(() => {
   const level = String(confidenceData.value?.level ?? "");
   if (level === "high") return "ok";
@@ -535,6 +573,20 @@ function getSeekableStart(video: HTMLVideoElement | null): number {
   return 0;
 }
 
+function formatSecondsMaybe(value: unknown) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return "--";
+  return `${num.toFixed(2)}s`;
+}
+
+function timingOffsetText(value: unknown) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return "--";
+  const abs = Math.abs(num);
+  if (abs < 0.02) return "已对齐";
+  return num > 0 ? `慢 ${abs.toFixed(2)}s` : `快 ${abs.toFixed(2)}s`;
+}
+
 function markerLabel(type: string) {
   if (type === "pose_error") return "动作误差";
   if (type === "tempo") return "节奏异常";
@@ -550,44 +602,36 @@ function markerClass(type: string) {
 }
 
 function pipelineStatusToText(status?: string) {
-  if (status === "pending") return "\u7b49\u5f85\u4e2d";
-  if (status === "running") return "\u5206\u6790\u4e2d";
-  if (status === "done") return "\u5df2\u5b8c\u6210";
-  if (status === "failed") return "\u5931\u8d25";
-  if (status === "canceled") return "\u5df2\u53d6\u6d88";
-  return status || "\u672a\u5f00\u59cb";
+  if (status === "pending") return "等待中";
+  if (status === "running") return "分析中";
+  if (status === "done") return "已完成";
+  if (status === "failed") return "失败";
+  if (status === "canceled") return "已取消";
+  return status || "未开始";
 }
 
 function stageToText(stage?: string, status?: string) {
-  if (stage === "queued") return "\u5df2\u8fdb\u5165\u961f\u5217";
-  if (stage === "preparing_inputs") return "\u51c6\u5907\u7d20\u6750";
-  if (stage === "extracting_pose") return "\u63d0\u53d6\u9aa8\u67b6";
-  if (stage === "aligning_motion") return "\u52a8\u4f5c\u5bf9\u9f50\u4e0e\u8bc4\u5206";
-  if (stage === "rendering_outputs") return "\u751f\u6210\u5bf9\u6bd4\u8f93\u51fa";
-  if (stage === "packaging_results") return "\u6574\u7406\u7ed3\u679c";
-  if (stage === "completed") return "\u7ed3\u679c\u5df2\u5c31\u7eea";
-  if (stage === "failed") return "\u4efb\u52a1\u5931\u8d25";
-  if (stage === "canceled") return "\u4efb\u52a1\u5df2\u53d6\u6d88";
+  if (stage === "queued") return "已进入队列";
+  if (stage === "preparing_inputs") return "准备素材";
+  if (stage === "extracting_pose") return "提取骨架";
+  if (stage === "aligning_motion") return "动作对齐与评分";
+  if (stage === "rendering_outputs") return "生成对比输出";
+  if (stage === "packaging_results") return "整理结果";
+  if (stage === "completed") return "结果已就绪";
+  if (stage === "failed") return "任务失败";
+  if (stage === "canceled") return "任务已取消";
   return pipelineStatusToText(status);
 }
 
-function statusTagClass(status?: string) {
-  if (status === "done") return "ok";
-  if (status === "failed") return "danger";
-  if (status === "canceled") return "neutral";
-  if (status === "running" || status === "pending") return "warn";
-  return "";
-}
-
 function severityText(severity?: string) {
-  if (severity === "mild") return "Mild";
-  if (severity === "clear") return "Clear";
-  if (severity === "severe") return "Severe";
+  if (severity === "mild") return "轻微";
+  if (severity === "clear") return "明显";
+  if (severity === "severe") return "严重";
   return severity || "-";
 }
 
 function markerFocusCopy(marker: { sec: number; frame: number; type: string; severity?: string }) {
-  return `${markerLabel(marker.type)} | ${severityText(marker.severity)} | jump to ${Number(marker.sec).toFixed(2)}s and replay at 0.5x`;
+  return `${markerLabel(marker.type)} | ${severityText(marker.severity)} | 跳转到 ${Number(marker.sec).toFixed(2)}s 并以 0.5x 回放`;
 }
 
 function applyPlaybackRates(rate: number) {
@@ -612,7 +656,6 @@ function stopPolling() {
     pollTimer = null;
   }
 }
-
 
 function applyPipelineMeta(meta?: Partial<PipelineRunResponse & PipelineStatusResponse & PipelineResultResponse> | null) {
   if (!meta) return;
@@ -930,15 +973,21 @@ async function startAnalysis() {
   cancelRequested.value = false;
   error.value = "";
   try {
-    const response = await runPipeline({ teacher_video_id: teacherId.value, user_video_id: userId.value, overwrite: overwrite.value });
+    const response = await runPipeline({
+      teacher_video_id: teacherId.value,
+      user_video_id: userId.value,
+      overwrite: overwrite.value,
+    });
     pipelineId.value = response.pipeline_id;
     applyPipelineMeta(response);
     stopPolling();
-    pollTimer = window.setInterval(() => { void pollStatus(response.pipeline_id); }, 2000);
+    pollTimer = window.setInterval(() => {
+      void pollStatus(response.pipeline_id);
+    }, 2000);
     await pollStatus(response.pipeline_id);
   } catch (e: any) {
     analyzing.value = false;
-    error.value = e?.response?.data?.detail ?? e?.message ?? "\u6d41\u7a0b\u542f\u52a8\u5931\u8d25";
+    error.value = e?.response?.data?.detail ?? e?.message ?? "流程启动失败";
   }
 }
 
@@ -954,7 +1003,7 @@ async function cancelCurrentPipeline() {
       stopPolling();
     }
   } catch (e: any) {
-    error.value = e?.response?.data?.detail ?? e?.message ?? "\u53d6\u6d88\u4efb\u52a1\u5931\u8d25";
+    error.value = e?.response?.data?.detail ?? e?.message ?? "取消任务失败";
   } finally {
     cancelingPipeline.value = false;
   }
@@ -1010,6 +1059,7 @@ async function ensureFrameDetail(frame: number | null) {
 onMounted(() => {
   void loadList();
 });
+
 watch([displayTeacherUrl, displayUserUrl], () => {
   playing.value = false;
   currentTime.value = 0;
@@ -1019,7 +1069,9 @@ watch([displayTeacherUrl, displayUserUrl], () => {
   restoreNormalPlayback();
   stopSyncTimer();
 });
+
 watch([teacherMuted, userMuted], applyMuteState);
+
 watch([teacherId, userId], () => {
   result.value = null;
   analysisMode.value = "overall";
@@ -1033,11 +1085,13 @@ watch([teacherId, userId], () => {
   cancelRequested.value = false;
   routeSeekSec.value = null;
 });
+
 watch([analysisMode, currentFrameIndex, result], ([mode, frame]) => {
   if (mode !== "local") return;
   void ensureFrameWindow(frame);
   void ensureFrameDetail(frame);
 });
+
 watch(
   () => [route.query.teacher, route.query.user, route.query.pipeline, route.query.sec, route.query.mode],
   () => {
@@ -1045,6 +1099,7 @@ watch(
     void hydrateFromRoute();
   },
 );
+
 watch([duration, result], ([nextDuration, nextResult]) => {
   if (!nextResult || !(nextDuration > 0) || routeSeekSec.value === null) return;
   seekBoth(routeSeekSec.value);
@@ -1059,13 +1114,68 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.analysis-strip {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+.compare-workbench,
+.analysis-workbench,
+.analysis-rail,
+.analysis-stage-card,
+.analysis-results,
+.analysis-result-grid,
+.compact-summary,
+.compact-marker-list {
+  display: grid;
+  gap: 16px;
 }
 
-.summary-stack {
+.compare-head {
+  gap: 18px;
+}
+
+.compare-kpi-row {
   display: grid;
-  gap: 12px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.compare-kpi-card {
+  display: grid;
+  gap: 6px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.compare-kpi-card span {
+  color: var(--muted);
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.compare-kpi-card strong {
+  font-family: var(--font-display);
+  font-size: 1.2rem;
+  line-height: 1.2;
+}
+
+.compare-kpi-card.emphasis {
+  background: linear-gradient(180deg, rgba(255, 247, 241, 0.98) 0%, rgba(255, 243, 235, 0.94) 100%);
+  border-color: rgba(226, 109, 61, 0.18);
+}
+
+.analysis-workbench {
+  grid-template-columns: 320px minmax(0, 1fr);
+  align-items: start;
+}
+
+.analysis-config-card,
+.analysis-session-card,
+.analysis-stage-card {
+  overflow: hidden;
+}
+
+.rail-actions {
+  margin-top: 4px;
 }
 
 .summary-row {
@@ -1077,46 +1187,17 @@ onBeforeUnmount(() => {
   border-radius: 12px;
   border: 1px solid rgba(15, 23, 42, 0.06);
   background: rgba(250, 251, 253, 0.78);
-  transition: background 0.16s ease, border-color 0.16s ease, transform 0.16s ease;
-}
-
-.summary-row:hover {
-  transform: translateY(-1px);
-  background: rgba(255, 250, 247, 0.92);
-  border-color: rgba(226, 109, 61, 0.14);
 }
 
 .summary-row span {
   color: var(--muted);
 }
 
-.focus-marker-list {
-  display: grid;
-  gap: 10px;
-  margin-top: 16px;
-}
-
-.focus-marker-item {
-  width: 100%;
-  text-align: left;
-  border: 1px solid rgba(226, 109, 61, 0.16);
-  background: rgba(255, 247, 242, 0.9);
-  border-radius: 14px;
-  padding: 12px 14px;
-  display: grid;
-  gap: 6px;
-  transition: transform 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease;
-}
-
-.focus-marker-item:hover {
-  transform: translateY(-1px);
-  border-color: rgba(226, 109, 61, 0.32);
-  box-shadow: 0 14px 28px rgba(226, 109, 61, 0.12);
-}
-
 .summary-row strong {
-  max-width: 70%;
+  max-width: 68%;
   text-align: right;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .progress-card {
@@ -1129,7 +1210,8 @@ onBeforeUnmount(() => {
 }
 
 .progress-head,
-.confidence-head {
+.result-section-head,
+.stage-timeline-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1137,11 +1219,13 @@ onBeforeUnmount(() => {
 }
 
 .progress-head strong,
-.confidence-head h3 {
+.result-section-head h3,
+.stage-timeline-head strong {
   margin: 0;
 }
 
-.progress-head span {
+.progress-head span,
+.stage-timeline-head span {
   color: var(--accent-dark);
   font-weight: 700;
 }
@@ -1165,71 +1249,34 @@ onBeforeUnmount(() => {
   margin: 0;
 }
 
-.result-metrics {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-}
-
-.confidence-list {
-  margin-top: 14px;
-}
-
-.tag.neutral {
-  background: rgba(15, 23, 42, 0.06);
-  color: var(--text);
-}
-
-.panel-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 12px;
-}
-
-.compact-head {
-  margin-bottom: 16px;
-}
-
-.panel-head h2,
-.panel-head h3 {
-  margin: 0;
-}
-
-.two-col-fields,
-.compact-stats {
+.video-compare-grid {
+  display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
 }
 
-.simple-check {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 14px;
-  color: var(--text);
-  font-weight: 600;
+.compact-stage-panel {
+  display: grid;
+  grid-template-rows: auto minmax(320px, 1fr);
+  min-height: 100%;
 }
 
-.simple-check input {
-  width: auto;
+.compact-stage-panel .player {
+  min-height: 320px;
+  max-height: 520px;
+  object-fit: cover;
 }
 
-.compare-page .sub-card {
-  box-shadow: none;
-  background: rgba(255, 255, 255, 0.76);
-}
-
-.simple-card {
-  border-style: solid;
-}
-
-.focus-copy {
-  color: var(--text);
-  font-size: 1rem;
+.stage-timeline {
+  display: grid;
+  gap: 14px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(15, 23, 42, 0.08);
 }
 
 .timeline-track {
   position: relative;
-  margin: 18px 0 0;
-  height: 16px;
+  height: 14px;
   border-radius: 999px;
   border: 1px solid rgba(15, 23, 42, 0.06);
   background: rgba(15, 23, 42, 0.08);
@@ -1245,39 +1292,65 @@ onBeforeUnmount(() => {
 
 .track-marker {
   position: absolute;
-  top: -2px;
+  top: -8px;
   transform: translateX(-50%);
   border: 0;
   background: transparent;
   padding: 0;
   box-shadow: none;
-  font-size: 18px;
+  font-size: 24px;
   line-height: 1;
   cursor: pointer;
-  transition: transform 0.16s ease, opacity 0.16s ease;
 }
 
-.track-marker:hover {
-  transform: translateX(-50%) scale(1.16);
+.result-metrics,
+.local-frame-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
-.mode-switch {
-  display: flex;
+.analysis-result-grid {
+  grid-template-columns: minmax(0, 1.1fr) minmax(300px, 0.9fr);
+}
+
+.compare-page .sub-card {
+  box-shadow: none;
+  background: rgba(255, 255, 255, 0.76);
+}
+
+.simple-card {
+  border-style: solid;
+}
+
+.focus-copy,
+.frame-advice {
+  color: var(--text);
+  font-size: 1rem;
+}
+
+.confidence-list,
+.simple-downloads {
+  margin-top: 0;
+}
+
+.focus-marker-list {
+  display: grid;
   gap: 10px;
-  flex-wrap: wrap;
 }
 
-.activeMode {
-  background: linear-gradient(135deg, var(--accent) 0%, #eb8d56 100%);
-  color: #fff;
-  border-color: transparent;
-  box-shadow: 0 8px 18px rgba(226, 109, 61, 0.18);
+.focus-marker-item {
+  width: 100%;
+  text-align: left;
+  border: 1px solid rgba(226, 109, 61, 0.16);
+  background: rgba(255, 247, 242, 0.9);
+  border-radius: 14px;
+  padding: 12px 14px;
+  display: grid;
+  gap: 6px;
 }
 
 .simple-downloads {
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 14px 16px;
-  margin-top: 20px;
 }
 
 .simple-downloads a {
@@ -1292,13 +1365,6 @@ onBeforeUnmount(() => {
   text-decoration: none;
   font-weight: 700;
   text-align: center;
-  transition: transform 0.16s ease, border-color 0.16s ease, background 0.16s ease;
-}
-
-.simple-downloads a:hover {
-  transform: translateY(-1px);
-  border-color: rgba(226, 109, 61, 0.14);
-  background: rgba(255, 250, 247, 0.92);
 }
 
 .m-pose {
@@ -1313,11 +1379,26 @@ onBeforeUnmount(() => {
   color: #45556f;
 }
 
+.activeMode {
+  background: linear-gradient(135deg, var(--accent) 0%, #eb8d56 100%);
+  color: #fff;
+  border-color: transparent;
+  box-shadow: 0 8px 18px rgba(226, 109, 61, 0.18);
+}
+
+@media (max-width: 1280px) {
+  .analysis-workbench,
+  .analysis-result-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (max-width: 1024px) {
-  .compact-stats,
-  .two-col-fields,
-  .simple-downloads,
-  .analysis-strip {
+  .compare-kpi-row,
+  .video-compare-grid,
+  .result-metrics,
+  .local-frame-grid,
+  .simple-downloads {
     grid-template-columns: 1fr;
   }
 
@@ -1333,7 +1414,9 @@ onBeforeUnmount(() => {
 }
 
 @media (max-width: 720px) {
-  .panel-head {
+  .panel-head,
+  .result-section-head,
+  .stage-timeline-head {
     flex-direction: column;
     align-items: stretch;
   }

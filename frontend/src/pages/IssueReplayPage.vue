@@ -3,34 +3,31 @@
     <section class="surface-card page-head">
       <div class="page-head-row">
         <div>
-          <h1>&#38382;&#39064;&#22238;&#25918;</h1>
-          <p class="page-subtitle">
-            &#25226;&#39640;&#35823;&#24046;&#29255;&#27573;&#12289;&#33410;&#22863;&#24322;&#24120;&#21306;&#38388;&#21644;&#20302;&#21487;&#20449;&#24230;&#25552;&#31034;&#25910;&#25972;&#25104;&#19968;&#20010;&#29420;&#31435;&#39029;&#38754;&#65292;
-            &#26041;&#20415;&#20320;&#30452;&#25509;&#23450;&#20301;&#22797;&#30424;&#12290;
-          </p>
+          <h1>问题回放</h1>
+          <p class="page-subtitle">把高误差片段、节奏异常区间和可信度风险整理成可直接复盘的列表，点击后会在当前条目下方展开详细信息。</p>
         </div>
         <div class="action-row">
           <button class="secondary-button" :disabled="loading" @click="refreshPage">
-            {{ loading ? refreshLoadingLabel : refreshLabel }}
+            {{ loading ? "刷新中..." : "刷新列表" }}
           </button>
         </div>
       </div>
 
       <div class="status-strip">
         <div class="status-cell">
-          <span class="status-caption">&#25253;&#21578;&#25968;</span>
+          <span class="status-caption">报告数</span>
           <strong class="status-main">{{ reports.length }}</strong>
         </div>
         <div class="status-cell">
-          <span class="status-caption">&#38382;&#39064;&#29255;&#27573;</span>
+          <span class="status-caption">问题片段</span>
           <strong class="status-main">{{ issueItems.length }}</strong>
         </div>
         <div class="status-cell">
-          <span class="status-caption">&#21160;&#20316;&#35823;&#24046;</span>
+          <span class="status-caption">动作误差</span>
           <strong class="status-main">{{ poseIssueCount }}</strong>
         </div>
         <div class="status-cell emphasis">
-          <span class="status-caption">&#33410;&#22863;&#19982;&#21487;&#20449;&#24230;</span>
+          <span class="status-caption">节奏与可信度</span>
           <strong class="status-main">{{ tempoAndConfidenceCount }}</strong>
         </div>
       </div>
@@ -40,44 +37,44 @@
       <article class="surface-card">
         <div class="panel-head compact-head">
           <div>
-            <h2>&#31579;&#36873;&#26465;&#20214;</h2>
-            <p class="helper-text">&#20808;&#25353;&#25253;&#21578;&#12289;&#38382;&#39064;&#31867;&#22411;&#21644;&#20005;&#37325;&#31243;&#24230;&#36807;&#28388;&#65292;&#20877;&#36827;&#20837;&#21491;&#20391;&#24555;&#36895;&#22797;&#30424;&#12290;</p>
+            <h2>筛选条件</h2>
+            <p class="helper-text">先按报告、问题类型和严重程度过滤，再点开具体条目进行回放。</p>
           </div>
         </div>
 
         <div class="field-grid two-col-fields">
           <div class="field-block">
-            <label class="field-label">&#25253;&#21578;&#26816;&#32034;</label>
+            <label class="field-label">报告检索</label>
             <input v-model.trim="keyword" type="text" :placeholder="searchPlaceholder" />
           </div>
           <div class="field-block">
-            <label class="field-label">&#38382;&#39064;&#31867;&#22411;</label>
+            <label class="field-label">问题类型</label>
             <select v-model="issueTypeFilter">
-              <option value="all">&#20840;&#37096;&#31867;&#22411;</option>
-              <option value="pose_error">&#21160;&#20316;&#35823;&#24046;</option>
-              <option value="tempo">&#33410;&#22863;&#24322;&#24120;</option>
-              <option value="confidence">&#21487;&#20449;&#24230;&#39118;&#38505;</option>
-              <option value="tracking_bad">&#36319;&#36394;&#38382;&#39064;</option>
+              <option value="all">全部类型</option>
+              <option value="pose_error">动作误差</option>
+              <option value="tempo">节奏异常</option>
+              <option value="confidence">可信度风险</option>
+              <option value="tracking_bad">跟踪问题</option>
             </select>
           </div>
         </div>
 
         <div class="field-grid two-col-fields">
           <div class="field-block">
-            <label class="field-label">&#20005;&#37325;&#31243;&#24230;</label>
+            <label class="field-label">严重程度</label>
             <select v-model="severityFilter">
-              <option value="all">&#20840;&#37096;&#20248;&#20808;&#32423;</option>
-              <option value="high">&#39640;&#20248;&#20808;&#32423;</option>
-              <option value="medium">&#20013;&#20248;&#20808;&#32423;</option>
-              <option value="low">&#20302;&#20248;&#20808;&#32423;</option>
+              <option value="all">全部优先级</option>
+              <option value="high">高优先级</option>
+              <option value="medium">中优先级</option>
+              <option value="low">低优先级</option>
             </select>
           </div>
           <div class="field-block">
-            <label class="field-label">&#26174;&#31034;&#25968;&#37327;</label>
+            <label class="field-label">显示数量</label>
             <select v-model.number="limit">
-              <option :value="20">&#26368;&#36817; 20 &#26465;</option>
-              <option :value="50">&#26368;&#36817; 50 &#26465;</option>
-              <option :value="100">&#26368;&#36817; 100 &#26465;</option>
+              <option :value="20">最近 20 条</option>
+              <option :value="50">最近 50 条</option>
+              <option :value="100">最近 100 条</option>
             </select>
           </div>
         </div>
@@ -89,32 +86,32 @@
       <article class="surface-card">
         <div class="panel-head compact-head">
           <div>
-            <h2>&#24403;&#21069;&#28966;&#28857;</h2>
-            <p class="helper-text">&#40664;&#35748;&#23637;&#31034;&#31526;&#21512;&#26465;&#20214;&#30340;&#31532;&#19968;&#26465;&#38382;&#39064;&#65292;&#21487;&#20197;&#20174;&#19979;&#26041;&#21015;&#34920;&#210?;&#25442;&#22797;&#30424;&#12290;</p>
+            <h2>当前焦点</h2>
+            <p class="helper-text">这里同步展示当前展开的问题片段，方便你快速确认定位信息。</p>
           </div>
         </div>
 
         <div v-if="selectedIssue" class="summary-stack">
           <div class="summary-row">
-            <span>&#25152;&#23646;&#25253;&#21578;</span>
+            <span>所属报告</span>
             <strong>{{ selectedIssue.pairName }}</strong>
           </div>
           <div class="summary-row">
-            <span>&#38382;&#39064;&#31867;&#22411;</span>
+            <span>问题类型</span>
             <strong>{{ issueTypeText(selectedIssue.type) }}</strong>
           </div>
           <div class="summary-row">
-            <span>&#23450;&#20301;&#26102;&#38388;</span>
+            <span>定位时间</span>
             <strong>{{ timeText(selectedIssue.sec) }}</strong>
           </div>
           <div class="summary-row">
-            <span>&#20248;&#20808;&#32423;</span>
+            <span>优先级</span>
             <strong>{{ severityText(selectedIssue.severity) }}</strong>
           </div>
         </div>
         <div v-else class="feedback-state" data-tone="empty">
-          <strong class="feedback-state-title">&#26242;&#26102;&#27809;&#26377;&#31526;&#21512;&#26465;&#20214;&#30340;&#38382;&#39064;&#29255;&#27573;</strong>
-          <span class="feedback-state-copy">&#21487;&#20197;&#25918;&#23485;&#31579;&#36873;&#26465;&#20214;&#65292;&#25110;&#32773;&#20808;&#22238;&#21040;&#21160;&#20316;&#20998;&#26512;&#39029;&#29983;&#25104;&#26032;&#32467;&#26524;&#12290;</span>
+          <strong class="feedback-state-title">当前没有聚焦的问题片段</strong>
+          <span class="feedback-state-copy">点开下方任意一条问题后，这里会同步显示摘要。</span>
         </div>
       </article>
     </section>
@@ -123,82 +120,87 @@
       <article class="surface-card">
         <div class="panel-head compact-head">
           <div>
-            <h2>&#38382;&#39064;&#21015;&#34920;</h2>
-            <p class="helper-text">&#25353;&#25253;&#21578;&#23436;&#25104;&#26102;&#38388;&#20502;&#24207;&#23637;&#31034;&#65292;&#22914;&#26524;&#23384;&#22312;&#26631;&#35760;&#28857;&#65292;&#20250;&#20248;&#20808;&#29992;&#26631;&#35760;&#28857;&#26469;&#23450;&#20301;&#22797;&#30424;&#12290;</p>
+            <h2>问题列表</h2>
+            <p class="helper-text">按报告完成时间倒序展示，如果存在标记点，会优先用标记点来定位复盘。</p>
           </div>
-          <span class="tag">{{ filteredIssues.length }} &#26465;</span>
+          <span class="tag">{{ filteredIssues.length }} 条</span>
         </div>
 
         <div v-if="loading && !reports.length" class="feedback-state" data-tone="loading">
-          <strong class="feedback-state-title">&#38382;&#39064;&#21015;&#34920;&#21152;&#36733;&#20013;</strong>
-          <span class="feedback-state-copy">&#27491;&#22312;&#35835;&#21462;&#21382;&#21490;&#25253;&#21578;&#19982;&#38382;&#39064;&#26631;&#35760;&#65292;&#35831;&#31245;&#20505;&#12290;</span>
+          <strong class="feedback-state-title">问题列表加载中</strong>
+          <span class="feedback-state-copy">正在读取历史报告与问题标记，请稍候。</span>
         </div>
         <div v-else-if="!filteredIssues.length" class="feedback-state" data-tone="empty">
-          <strong class="feedback-state-title">&#24403;&#21069;&#31579;&#36873;&#19979;&#27809;&#26377;&#21487;&#22797;&#30424;&#30340;&#38382;&#39064;&#29255;&#27573;</strong>
-          <span class="feedback-state-copy">&#21487;&#20197;&#35843;&#20302;&#31579;&#36873;&#38376;&#27083;&#65292;&#25110;&#32773;&#21047;&#26032;&#25253;&#21578;&#21518;&#20877;&#36827;&#26469;&#26597;&#30475;&#12290;</span>
+          <strong class="feedback-state-title">当前筛选下没有可复盘的问题片段</strong>
+          <span class="feedback-state-copy">可以调整筛选条件，或者刷新报告后再进来查看。</span>
         </div>
         <div v-else class="issue-list">
-          <button
-            v-for="item in filteredIssues"
-            :key="item.id"
-            type="button"
-            class="issue-item"
-            :class="{ active: selectedIssueId === item.id }"
-            @click="selectedIssueId = item.id"
-          >
-            <div class="issue-item-head">
-              <div>
-                <strong>{{ item.pairName }}</strong>
-                <p class="helper-text">{{ issueTypeText(item.type) }} ? {{ timeText(item.sec) }}</p>
+          <div v-for="item in filteredIssues" :key="item.id" class="issue-item-shell">
+            <button
+              type="button"
+              class="issue-item"
+              :class="{ active: selectedIssueId === item.id }"
+              @click="toggleIssue(item.id)"
+            >
+              <div class="issue-item-head">
+                <div>
+                  <strong>{{ item.pairName }}</strong>
+                  <p class="helper-text">{{ issueTypeText(item.type) }} · {{ timeText(item.sec) }}</p>
+                </div>
+                <span class="tag" :class="severityTone(item.severity)">{{ severityText(item.severity) }}</span>
               </div>
-              <span class="tag" :class="severityTone(item.severity)">{{ severityText(item.severity) }}</span>
+
+              <p class="helper-text issue-item-copy">{{ item.summary }}</p>
+
+              <div class="task-item-meta">
+                <span>完成时间：{{ formatDate(item.finishedAt) }}</span>
+                <span>总分：{{ scoreText(item.scoreTotal) }}</span>
+                <span>可信度：{{ confidenceText(item.confidenceScore) }}</span>
+              </div>
+            </button>
+
+            <div
+              v-if="selectedIssueId === item.id"
+              ref="detailPanelRef"
+              class="issue-inline-detail"
+            >
+              <div class="panel-head compact-head">
+                <div>
+                  <h2>复盘动作</h2>
+                  <p class="helper-text">从这里可以直接跳回动作分析、报告中心或任务中心，不用来回找入口。</p>
+                </div>
+                <div class="action-row">
+                  <button class="ghost-button danger-button" type="button" :disabled="deletingIssue" @click="deleteSelectedIssue">
+                    {{ deletingIssue ? "删除中..." : "删除记录" }}
+                  </button>
+                </div>
+              </div>
+
+              <div v-if="selectedIssue" class="detail-stack">
+                <div class="metric-row compact-stats">
+                  <div class="metric-chip"><strong>问题类型</strong><span>{{ issueTypeText(selectedIssue.type) }}</span></div>
+                  <div class="metric-chip"><strong>定位时间</strong><span>{{ timeText(selectedIssue.sec) }}</span></div>
+                  <div class="metric-chip"><strong>优先级</strong><span>{{ severityText(selectedIssue.severity) }}</span></div>
+                </div>
+
+                <div class="list-item-card">
+                  <strong>复盘摘要</strong>
+                  <span class="helper-text">{{ selectedIssue.summary }}</span>
+                </div>
+
+                <div class="list-item-card" v-if="selectedIssue.action">
+                  <strong>处理建议</strong>
+                  <span class="helper-text">{{ selectedIssue.action }}</span>
+                </div>
+
+                <div class="detail-links issue-links">
+                  <button class="secondary-button" type="button" @click="jumpToCompare">定位到动作分析</button>
+                  <button class="secondary-button" type="button" @click="openReport">打开报告中心</button>
+                  <button class="secondary-button" type="button" @click="openTask">打开任务中心</button>
+                </div>
+              </div>
             </div>
-
-            <p class="helper-text issue-item-copy">{{ item.summary }}</p>
-
-            <div class="task-item-meta">
-              <span>&#23436;&#25104;&#26102;&#38388;&#65306;{{ formatDate(item.finishedAt) }}</span>
-              <span>&#24635;&#20998;&#65306;{{ scoreText(item.scoreTotal) }}</span>
-              <span>&#21487;&#20449;&#24230;&#65306;{{ confidenceText(item.confidenceScore) }}</span>
-            </div>
-          </button>
-        </div>
-      </article>
-
-      <article class="surface-card detail-panel">
-        <div class="panel-head compact-head">
-          <div>
-            <h2>&#22797;&#30424;&#21160;&#20316;</h2>
-            <p class="helper-text">&#20174;&#36825;&#37324;&#21487;&#20197;&#30452;&#25509;&#36339;&#22238;&#21160;&#20316;&#20998;&#26512;&#12289;&#25253;&#21578;&#20013;&#24515;&#25110;&#20219;&#21153;&#20013;&#24515;&#65292;&#23613;&#37327;&#19981;&#35753;&#20320;&#37325;&#22797;&#23547;&#25214;&#20837;&#21475;&#12290;</p>
           </div>
-        </div>
-
-        <div v-if="selectedIssue" class="detail-stack">
-          <div class="metric-row compact-stats">
-            <div class="metric-chip"><strong>&#38382;&#39064;&#31867;&#22411;</strong><span>{{ issueTypeText(selectedIssue.type) }}</span></div>
-            <div class="metric-chip"><strong>&#23450;&#20301;&#26102;&#38388;</strong><span>{{ timeText(selectedIssue.sec) }}</span></div>
-            <div class="metric-chip"><strong>&#20248;&#20808;&#32423;</strong><span>{{ severityText(selectedIssue.severity) }}</span></div>
-          </div>
-
-          <div class="list-item-card">
-            <strong>&#22797;&#30424;&#25688;&#35201;</strong>
-            <span class="helper-text">{{ selectedIssue.summary }}</span>
-          </div>
-
-          <div class="list-item-card" v-if="selectedIssue.action">
-            <strong>&#22788;&#29702;&#24314;&#35758;</strong>
-            <span class="helper-text">{{ selectedIssue.action }}</span>
-          </div>
-
-          <div class="detail-links issue-links">
-            <button class="secondary-button" type="button" @click="jumpToCompare">&#23450;&#20301;&#21040;&#21160;&#20316;&#20998;&#26512;</button>
-            <button class="secondary-button" type="button" @click="openReport">&#25171;&#24320;&#25253;&#21578;&#20013;&#24515;</button>
-            <button class="secondary-button" type="button" @click="openTask">&#25171;&#24320;&#20219;&#21153;&#20013;&#24515;</button>
-          </div>
-        </div>
-        <div v-else class="feedback-state" data-tone="empty">
-          <strong class="feedback-state-title">&#35831;&#20808;&#36873;&#25321;&#19968;&#26465;&#38382;&#39064;</strong>
-          <span class="feedback-state-copy">&#24038;&#20391;&#38382;&#39064;&#21345;&#29255;&#34987;&#36873;&#20013;&#21518;&#65292;&#36825;&#37324;&#20250;&#25552;&#20379;&#30452;&#25509;&#22797;&#30424;&#30340;&#20837;&#21475;&#12290;</span>
         </div>
       </article>
     </section>
@@ -208,10 +210,13 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { getAnalysisReport, listAnalysisReports } from "../api/pipelines";
+import { deletePipelineTask, getAnalysisReport, listAnalysisReports } from "../api/pipelines";
+import { focusDetailPanel } from "../utils/detailPanel";
+import { normalizedConfidenceIssues, normalizedConfidenceSummary } from "../utils/confidence";
 import type { AnalysisReportDetailResponse, AnalysisReportItem } from "../types/video";
 
 type IssueSeverity = "high" | "medium" | "low";
+
 type IssueReplayItem = {
   id: string;
   pipelineId: string;
@@ -232,10 +237,6 @@ type IssueReplayItem = {
 const router = useRouter();
 const route = useRoute();
 
-const refreshLabel = "刷新列表";
-const refreshLoadingLabel = "刷新中...";
-const searchPlaceholder = "搜索教师或学员素材名称";
-
 const loading = ref(false);
 const error = ref("");
 const reports = ref<AnalysisReportItem[]>([]);
@@ -244,7 +245,11 @@ const keyword = ref("");
 const issueTypeFilter = ref("all");
 const severityFilter = ref("all");
 const limit = ref(50);
+const detailPanelRef = ref<HTMLElement | null>(null);
 const selectedIssueId = ref("");
+const deletingIssue = ref(false);
+
+const searchPlaceholder = "搜索教师或学员素材名称";
 
 const issueItems = computed(() => reports.value.flatMap((report) => issueMap.value[report.pipeline_id] || []));
 const filteredIssues = computed(() => {
@@ -319,6 +324,7 @@ function extractIssues(report: AnalysisReportDetailResponse): IssueReplayItem[] 
   const result: IssueReplayItem[] = [];
   const pairName = report.pair_name || report.pipeline_id;
   const markers = Array.isArray(report.report?.markers) ? report.report?.markers : [];
+
   for (const marker of markers) {
     const sec = Number((marker as any)?.sec);
     if (!Number.isFinite(sec)) continue;
@@ -356,14 +362,15 @@ function extractIssues(report: AnalysisReportDetailResponse): IssueReplayItem[] 
       sec,
       frame: null,
       summary: `第 ${index + 1} 段节奏异常，建议对照拍点和动作转场。`,
-      action: "可先聚焦这段的拍点、重心转移和动作发力节奏。",
+      action: "可先聚焦这一段的拍点、重心转移和动作发力节奏。",
       finishedAt: report.finished_at || report.updated_at,
       scoreTotal: report.score_total,
       confidenceScore: report.confidence_score,
     });
   }
 
-  const confidenceIssues = Array.isArray(report.report?.confidence?.issues) ? report.report?.confidence?.issues : [];
+  const confidenceSummary = normalizedConfidenceSummary(report.report?.confidence, report.confidence_summary);
+  const confidenceIssues = normalizedConfidenceIssues(report.report?.confidence);
   for (let index = 0; index < confidenceIssues.length; index += 1) {
     const issue = confidenceIssues[index] as any;
     const markerSec = Number(markers.find((item: any) => Number.isFinite(Number(item?.sec)))?.sec);
@@ -377,7 +384,7 @@ function extractIssues(report: AnalysisReportDetailResponse): IssueReplayItem[] 
       severity: "high",
       sec: Number.isFinite(markerSec) ? markerSec : 0,
       frame: null,
-      summary: String(issue?.message || report.confidence_summary || "本轮分析存在可信度风险。"),
+      summary: String(issue?.message || confidenceSummary || "本轮分析存在可信度风险。"),
       action: String(issue?.suggestion || "建议先改善拍摄视角或跟踪质量，再重新复测。"),
       finishedAt: report.finished_at || report.updated_at,
       scoreTotal: report.score_total,
@@ -418,17 +425,62 @@ function alignSelection() {
   if (pipelineQuery) {
     const hit = filteredIssues.value.find((item) => item.pipelineId === pipelineQuery && (!Number.isFinite(secQuery) || Math.abs(item.sec - secQuery) < 0.11));
     if (hit) {
-      selectedIssueId.value = hit.id;
+      void openIssue(hit.id);
       return;
     }
   }
+  if (!filteredIssues.value.length) {
+    selectedIssueId.value = "";
+    return;
+  }
   if (!selectedIssueId.value || !filteredIssues.value.some((item) => item.id === selectedIssueId.value)) {
-    selectedIssueId.value = filteredIssues.value[0]?.id || "";
+    selectedIssueId.value = filteredIssues.value[0].id;
   }
 }
 
 async function refreshPage() {
   await loadReports();
+}
+
+async function openIssue(issueId: string) {
+  selectedIssueId.value = issueId;
+  await Promise.resolve();
+  focusDetailPanel(detailPanelRef, { forceScroll: true });
+}
+
+function closeIssueDetail() {
+  selectedIssueId.value = "";
+}
+
+async function toggleIssue(issueId: string) {
+  if (issueId === selectedIssueId.value) {
+    closeIssueDetail();
+    return;
+  }
+  await openIssue(issueId);
+}
+
+async function deleteSelectedIssue() {
+  const issue = selectedIssue.value;
+  if (!issue?.pipelineId) return;
+
+  const confirmed = window.confirm(`确认删除“${issue.pairName}”的历史记录吗？相关报告和问题片段会一起移除。`);
+  if (!confirmed) return;
+
+  deletingIssue.value = true;
+  error.value = "";
+  try {
+    await deletePipelineTask(issue.pipelineId);
+    reports.value = reports.value.filter((item) => item.pipeline_id !== issue.pipelineId);
+    const nextMap = { ...issueMap.value };
+    delete nextMap[issue.pipelineId];
+    issueMap.value = nextMap;
+    alignSelection();
+  } catch (err: any) {
+    error.value = err?.response?.data?.detail ?? err?.message ?? "删除历史记录失败";
+  } finally {
+    deletingIssue.value = false;
+  }
 }
 
 function jumpToCompare() {
@@ -487,12 +539,13 @@ onMounted(() => {
 
 .issue-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1.08fr) minmax(340px, 0.92fr);
   gap: 16px;
 }
 
 .issue-list,
-.detail-stack {
+.detail-stack,
+.issue-item-shell,
+.summary-stack {
   display: grid;
   gap: 12px;
 }
@@ -545,11 +598,6 @@ onMounted(() => {
   line-height: 1.65;
 }
 
-.summary-stack {
-  display: grid;
-  gap: 10px;
-}
-
 .summary-row {
   padding-bottom: 10px;
   border-bottom: 1px solid rgba(15, 23, 42, 0.06);
@@ -560,18 +608,28 @@ onMounted(() => {
   border-bottom: 0;
 }
 
-.detail-panel {
-  min-height: 100%;
+.issue-inline-detail {
+  display: grid;
+  gap: 14px;
+  padding: 16px 18px 18px;
+  border-radius: 18px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: linear-gradient(180deg, rgba(248, 250, 252, 0.98) 0%, rgba(255, 255, 255, 0.98) 100%);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.04);
 }
 
 .issue-links {
   margin-top: 4px;
 }
 
-@media (max-width: 1180px) {
-  .issue-layout {
-    grid-template-columns: 1fr;
-  }
+.danger-button {
+  color: #b42318;
+  border-color: rgba(180, 35, 24, 0.22);
+}
+
+.danger-button:hover:not(:disabled) {
+  border-color: rgba(180, 35, 24, 0.4);
+  background: rgba(180, 35, 24, 0.08);
 }
 
 @media (max-width: 1024px) {
