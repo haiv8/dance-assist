@@ -86,15 +86,15 @@
 
         <div class="shortcut-stack">
           <div class="shortcut-card" role="button" tabindex="0" @click="goToRecords" @keydown.enter="goToRecords" @keydown.space.prevent="goToRecords">
-            <strong>打开分析记录 <InfoHint :text="tasksShortcutCopy" /></strong>
+            <strong>打开分析记录</strong>
             <span>{{ tasksShortcutCopy }}</span>
           </div>
           <div class="shortcut-card" role="button" tabindex="0" @click="goToRecordsCompleted" @keydown.enter="goToRecordsCompleted" @keydown.space.prevent="goToRecordsCompleted">
-            <strong>打开已完成记录 <InfoHint :text="reportsShortcutCopy" /></strong>
+            <strong>打开已完成记录</strong>
             <span>{{ reportsShortcutCopy }}</span>
           </div>
           <div class="shortcut-card" role="button" tabindex="0" @click="goToCompare" @keydown.enter="goToCompare" @keydown.space.prevent="goToCompare">
-            <strong>回到开始分析 <InfoHint :text="compareShortcutCopy" /></strong>
+            <strong>回到开始分析</strong>
             <span>{{ compareShortcutCopy }}</span>
           </div>
         </div>
