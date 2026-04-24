@@ -166,7 +166,7 @@
             </div>
             <div class="dense-col mono-col">{{ timeText(item.sec) }}</div>
             <div class="dense-col">
-              <strong class="dense-name">{{ item.pairName }}</strong>
+              <strong class="dense-name">{{ item.pairName || compactPipelineId(item.pipelineId) }}</strong>
               <span class="helper-text">{{ formatDate(item.finishedAt) }}</span>
             </div>
             </button>
@@ -228,7 +228,7 @@
               @click="toggleRecord(item.pipeline_id)"
             >
             <div class="dense-col primary-col">
-              <strong>{{ item.pair_name || item.pipeline_id }}</strong>
+              <strong>{{ item.pair_name || compactPipelineId(item.pipeline_id) }}</strong>
               <p class="helper-text">{{ recordLead(item) }}</p>
             </div>
             <div class="dense-col">
@@ -398,6 +398,7 @@ import {
 } from "../api/pipelines";
 import { normalizedConfidenceSummary } from "../utils/confidence";
 import { focusDetailPanel } from "../utils/detailPanel";
+import { compactPipelineId } from "../utils/display";
 import { friendlyError, runningTaskDeleteMessage } from "../utils/errors";
 import type {
   AiCoachResponse,

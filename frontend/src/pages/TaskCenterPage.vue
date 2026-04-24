@@ -134,8 +134,8 @@
             >
               <div class="task-item-head">
                 <div>
-                  <strong>{{ task.pair_name }}</strong>
-                  <p class="helper-text">{{ task.pipeline_id }}</p>
+                  <strong>{{ task.pair_name || compactPipelineId(task.pipeline_id) }}</strong>
+                  <p class="helper-text compact-id">ID {{ compactPipelineId(task.pipeline_id) }}</p>
                 </div>
                 <span class="tag" :class="statusTagClass(task.status)">{{ statusText(task.status) }}</span>
               </div>
@@ -260,6 +260,7 @@ import { absMediaUrl } from "../api/http";
 import { cancelPipeline, deletePipelineTask, getPipelineResultSummary, listPipelineTasks } from "../api/pipelines";
 import { focusDetailPanel } from "../utils/detailPanel";
 import { normalizedConfidenceSummary } from "../utils/confidence";
+import { compactPipelineId } from "../utils/display";
 import { friendlyError, runningTaskDeleteMessage } from "../utils/errors";
 import type { PipelineResultSummaryResponse, PipelineStatusType, PipelineTaskListItem } from "../types/video";
 

@@ -169,8 +169,8 @@
 
               <div class="report-item-head">
                 <div>
-                  <strong>{{ item.pair_name || item.pipeline_id }}</strong>
-                  <p class="helper-text">{{ item.pipeline_id }}</p>
+                  <strong>{{ item.pair_name || compactPipelineId(item.pipeline_id) }}</strong>
+                  <p class="helper-text compact-id">ID {{ compactPipelineId(item.pipeline_id) }}</p>
                 </div>
               </div>
 
@@ -299,6 +299,7 @@ import { absMediaUrl } from "../api/http";
 import { deletePipelineTask, getAnalysisReport, listAnalysisReports } from "../api/pipelines";
 import { focusDetailPanel } from "../utils/detailPanel";
 import { normalizedConfidenceSummary } from "../utils/confidence";
+import { compactPipelineId } from "../utils/display";
 import { friendlyError } from "../utils/errors";
 import type { AnalysisReportDetailResponse, AnalysisReportItem } from "../types/video";
 

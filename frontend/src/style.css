@@ -595,6 +595,17 @@ p {
   font-weight: 700;
 }
 
+.compact-id {
+  max-width: fit-content;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.05);
+  color: var(--muted);
+  font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.02em;
+}
+
 .secondary-button,
 .ghost-button,
 .link-button {
