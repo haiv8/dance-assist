@@ -31,6 +31,21 @@
       </div>
     </section>
 
+    <section class="surface-card workflow-stepper" aria-label="分析流程">
+      <article
+        v-for="step in workflowSteps"
+        :key="step.key"
+        class="workflow-step-item"
+        :class="step.state"
+      >
+        <span class="workflow-step-index">{{ step.index }}</span>
+        <div>
+          <strong>{{ step.title }}</strong>
+          <p>{{ step.copy }}</p>
+        </div>
+      </article>
+    </section>
+
     <section class="analysis-workbench">
       <aside class="analysis-rail">
         <article class="surface-card analysis-config-card">
@@ -65,6 +80,7 @@
 
           <label class="simple-check">
             <input type="checkbox" v-model="overwrite" />
+            <span class="check-mark" aria-hidden="true"></span>
             <span>覆盖历史结果</span>
           </label>
 
@@ -395,6 +411,8 @@ import type {
   VideoItem,
 } from "../types/video";
 
+type WorkflowStepState = "done" | "active" | "locked";
+
 const route = useRoute();
 
 const loading = ref(false);
@@ -452,6 +470,38 @@ const analysisFeedbackText = computed(() => {
     return `${stage} - ${pipelineProgressPercent.value}%`;
   }
   return analysisHint.value;
+});
+const hasSelectedPair = computed(() => Boolean(teacherId.value && userId.value));
+const hasActivePipeline = computed(() => analyzing.value || pipelineStatus.value === "pending" || pipelineStatus.value === "running");
+const workflowSteps = computed<Array<{ key: string; index: string; title: string; copy: string; state: WorkflowStepState }>>(() => {
+  const selectDone = hasSelectedPair.value;
+  const runDone = Boolean(result.value);
+  const runActive = selectDone && !runDone;
+  const reviewActive = Boolean(result.value);
+
+  return [
+    {
+      key: "select",
+      index: "01",
+      title: "选择素材",
+      copy: selectDone ? "教师与学员素材已就绪" : "先选择一组教师示范和学员练习",
+      state: selectDone ? "done" : "active",
+    },
+    {
+      key: "run",
+      index: "02",
+      title: "确认并分析",
+      copy: hasActivePipeline.value ? analysisFeedbackText.value : pipelineId.value ? "任务已创建，可继续查看进度" : "确认组合后发起动作分析",
+      state: runDone ? "done" : runActive ? "active" : "locked",
+    },
+    {
+      key: "review",
+      index: "03",
+      title: "复盘结果",
+      copy: result.value ? "查看分数、可信度、问题片段和 AI 建议" : "分析完成后自动开放结果复盘",
+      state: reviewActive ? "active" : "locked",
+    },
+  ];
 });
 
 const displayTeacherUrl = computed(() => {
@@ -1174,6 +1224,7 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .compare-workbench,
+.workflow-stepper,
 .analysis-workbench,
 .analysis-rail,
 .analysis-stage-card,
@@ -1194,6 +1245,7 @@ onBeforeUnmount(() => {
   grid-template-columns: minmax(0, 1fr);
   grid-template-areas:
     "head"
+    "workflow"
     "workbench"
     "result";
   align-items: stretch;
@@ -1201,6 +1253,10 @@ onBeforeUnmount(() => {
 
 .compare-workbench > .compare-head {
   grid-area: head;
+}
+
+.compare-workbench > .workflow-stepper {
+  grid-area: workflow;
 }
 
 .compare-workbench > .analysis-workbench {
@@ -1244,6 +1300,81 @@ onBeforeUnmount(() => {
   border-color: rgba(226, 109, 61, 0.18);
 }
 
+.workflow-stepper {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  padding: 12px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.96) 0%, rgba(244, 251, 255, 0.92) 100%),
+    radial-gradient(circle at 10% 20%, rgba(56, 189, 248, 0.1), transparent 32%);
+}
+
+.workflow-step-item {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  min-height: 86px;
+  padding: 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--muted);
+  transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.workflow-step-item strong {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--ink);
+  font-family: var(--font-display);
+  font-size: 1rem;
+}
+
+.workflow-step-item p {
+  margin: 0;
+  font-size: 0.86rem;
+  line-height: 1.6;
+}
+
+.workflow-step-index {
+  display: inline-grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: rgba(248, 250, 252, 0.92);
+  color: var(--muted);
+  font-family: var(--font-display);
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+}
+
+.workflow-step-item.active {
+  transform: translateY(-1px);
+  border-color: rgba(15, 143, 179, 0.34);
+  background: linear-gradient(145deg, rgba(236, 253, 255, 0.94), rgba(255, 255, 255, 0.98));
+  box-shadow: 0 16px 36px rgba(15, 143, 179, 0.12);
+}
+
+.workflow-step-item.active .workflow-step-index {
+  border-color: transparent;
+  background: linear-gradient(135deg, var(--accent) 0%, #38bdf8 100%);
+  color: #fff;
+}
+
+.workflow-step-item.done .workflow-step-index {
+  border-color: rgba(22, 163, 74, 0.18);
+  background: rgba(220, 252, 231, 0.9);
+  color: #15803d;
+}
+
+.workflow-step-item.locked {
+  opacity: 0.62;
+}
+
 .analysis-workbench {
   grid-template-columns: minmax(0, 1fr);
   align-items: start;
@@ -1282,6 +1413,61 @@ onBeforeUnmount(() => {
 
 .rail-actions {
   margin-top: 4px;
+}
+
+.analysis-config-card .simple-check {
+  position: relative;
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 28px;
+  margin-top: 2px;
+}
+
+.analysis-config-card .simple-check input[type="checkbox"] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.analysis-config-card .check-mark {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 8px;
+  border: 1px solid rgba(15, 23, 42, 0.16);
+  background: rgba(255, 255, 255, 0.86);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  transition: background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.analysis-config-card .check-mark::after {
+  content: "";
+  width: 9px;
+  height: 5px;
+  border-bottom: 2px solid #fff;
+  border-left: 2px solid #fff;
+  opacity: 0;
+  transform: translateY(-1px) rotate(-45deg);
+}
+
+.analysis-config-card .simple-check input[type="checkbox"]:checked + .check-mark {
+  border-color: transparent;
+  background: linear-gradient(135deg, var(--accent) 0%, #38bdf8 100%);
+  box-shadow: 0 8px 18px rgba(15, 143, 179, 0.18);
+}
+
+.analysis-config-card .simple-check input[type="checkbox"]:checked + .check-mark::after {
+  opacity: 1;
+}
+
+.analysis-config-card .simple-check:focus-within .check-mark {
+  box-shadow: 0 0 0 4px rgba(15, 143, 179, 0.12);
 }
 
 .summary-row {
@@ -1532,6 +1718,7 @@ onBeforeUnmount(() => {
 
 @media (max-width: 1024px) {
   .compare-kpi-row,
+  .workflow-stepper,
   .video-compare-grid,
   .ai-coach-grid,
   .result-metrics,
