@@ -130,6 +130,7 @@ export interface PipelineResultSummaryResponse {
   report?: Record<string, any> | null;
   timeline?: Record<string, any> | null;
   files?: Record<string, string> | null;
+  issues?: RecordWorkspaceIssueItem[] | null;
 }
 
 export interface PipelineFrameDetailResponse {
@@ -227,6 +228,82 @@ export interface AnalysisReportListResponse {
 
 export interface AnalysisReportDetailResponse extends AnalysisReportItem {
   report?: Record<string, any> | null;
+}
+
+export type IssueSeverityType = "high" | "medium" | "low";
+
+export interface RecordWorkspaceItem extends PipelineTaskListItem {
+  score_pose?: number | null;
+  score_tempo?: number | null;
+  confidence_level?: string | null;
+  overall_advice?: string | null;
+  confidence_summary?: string | null;
+  beginner_summary?: string | null;
+  teaching_summary?: string | null;
+  top_joints?: any[];
+  files?: Record<string, string> | null;
+  has_report: boolean;
+  issue_count: number;
+}
+
+export interface RecordWorkspaceIssueItem {
+  id: string;
+  pipeline_id: string;
+  pair_name: string;
+  teacher_video_id?: string | null;
+  user_video_id?: string | null;
+  type: string;
+  severity: IssueSeverityType;
+  sec: number;
+  frame?: number | null;
+  summary: string;
+  action?: string | null;
+  finished_at?: string | null;
+  score_total?: number | null;
+  confidence_score?: number | null;
+}
+
+export interface RecordWorkspaceResponse {
+  items: RecordWorkspaceItem[];
+  issues: RecordWorkspaceIssueItem[];
+  total: number;
+  issue_total: number;
+  limit: number;
+}
+
+export interface AiCoachPriorityIssue {
+  title: string;
+  severity: IssueSeverityType;
+  time_hint?: string | null;
+  reason: string;
+  practice_tip: string;
+}
+
+export interface AiCoachPracticeStep {
+  title: string;
+  duration_min: number;
+  steps: string[];
+  success_criteria: string;
+}
+
+export interface AiCoachResponse {
+  pipeline_id: string;
+  pair_name?: string | null;
+  generated_by: "openai" | "aliyun" | "local_fallback";
+  model?: string | null;
+  summary: string;
+  priority_issues: AiCoachPriorityIssue[];
+  practice_plan: AiCoachPracticeStep[];
+  teacher_notes: string[];
+  safety_note?: string | null;
+  setup_hint?: string | null;
+}
+
+export interface AiProviderStatusResponse {
+  provider: string;
+  configured: boolean;
+  model?: string | null;
+  base_url?: string | null;
 }
 
 

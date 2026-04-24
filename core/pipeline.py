@@ -416,6 +416,17 @@ def _trim_range(energy: np.ndarray, fps: float, cfg: PipelineConfig) -> tuple[in
     return s, e
 
 
+def _dtw_frame_distance(a: np.ndarray, b: np.ndarray, feat_norm: float) -> float:
+    raw_diff = a - b
+    finite = np.isfinite(raw_diff)
+    finite_ratio = float(np.mean(finite)) if finite.size else 0.0
+    diff = np.where(finite, raw_diff, 1.0)
+    d = float(np.linalg.norm(diff) / max(1e-6, feat_norm))
+    if not np.isfinite(d):
+        return 1e6
+    return d * (1.0 + 0.75 * (1.0 - finite_ratio))
+
+
 def _banded_dtw(x: np.ndarray, y: np.ndarray, qx: np.ndarray, qy: np.ndarray, band_ratio: float) -> AlignInfo:
     n, m = x.shape[0], y.shape[0]
     if n <= 0 or m <= 0:
@@ -433,6 +444,7 @@ def _banded_dtw(x: np.ndarray, y: np.ndarray, qx: np.ndarray, qy: np.ndarray, ba
         dp = np.full((n + 1, m + 1), inf, dtype=np.float64)
         prev = np.full((n + 1, m + 1), -1, dtype=np.int8)
         dp[0, 0] = 0.0
+        feat_norm = float(np.sqrt(max(1, x.shape[1])))
 
         for i in range(1, n + 1):
             j0 = max(1, i - band)
@@ -440,7 +452,7 @@ def _banded_dtw(x: np.ndarray, y: np.ndarray, qx: np.ndarray, qy: np.ndarray, ba
             xi = x[i - 1]
             for j in range(j0, j1 + 1):
                 yj = y[j - 1]
-                d = float(np.linalg.norm(xi - yj) / np.sqrt(x.shape[1]))
+                d = _dtw_frame_distance(xi, yj, feat_norm)
                 q = float(max(0.05, min(1.0, 0.5 * (qx[i - 1] + qy[j - 1]))))
                 # Do not discount low-quality frames to near-zero cost, otherwise
                 # DTW can collapse to pathological paths. Low quality gets mild penalty.
@@ -523,6 +535,127 @@ def _banded_dtw(x: np.ndarray, y: np.ndarray, qx: np.ndarray, qy: np.ndarray, ba
         warp_ratio=float(path_len / max(1, max(n, m))),
         jump_rate=1.0,
     )
+
+
+def _subsequence_dtw(x: np.ndarray, y: np.ndarray, qx: np.ndarray, qy: np.ndarray) -> AlignInfo:
+    """Match the full user sequence y to the best contiguous subsequence of x."""
+    n, m = x.shape[0], y.shape[0]
+    if n <= 0 or m <= 0:
+        return AlignInfo(
+            i_path=np.zeros(0, dtype=np.int32),
+            j_path=np.zeros(0, dtype=np.int32),
+            cost=1e18,
+            path_length=0,
+            warp_ratio=0.0,
+            jump_rate=1.0,
+        )
+
+    inf = 1e18
+    dp = np.full((m + 1, n + 1), inf, dtype=np.float64)
+    prev = np.full((m + 1, n + 1), -1, dtype=np.int8)
+    dp[0, :] = 0.0
+    feat_norm = float(np.sqrt(max(1, x.shape[1])))
+
+    for ui in range(1, m + 1):
+        yv = y[ui - 1]
+        for ti in range(1, n + 1):
+            d = _dtw_frame_distance(x[ti - 1], yv, feat_norm)
+            q = float(max(0.05, min(1.0, 0.5 * (qx[ti - 1] + qy[ui - 1]))))
+            d *= (1.0 + 0.5 * (1.0 - q))
+
+            up = dp[ui - 1, ti]
+            left = dp[ui, ti - 1]
+            diag = dp[ui - 1, ti - 1]
+            if diag <= up and diag <= left:
+                dp[ui, ti] = diag + d
+                prev[ui, ti] = 2
+            elif up <= left:
+                dp[ui, ti] = up + d
+                prev[ui, ti] = 0
+            else:
+                dp[ui, ti] = left + d
+                prev[ui, ti] = 1
+
+    end_t = int(np.argmin(dp[m, 1:])) + 1
+    if not np.isfinite(dp[m, end_t]):
+        return AlignInfo(
+            i_path=np.zeros(0, dtype=np.int32),
+            j_path=np.zeros(0, dtype=np.int32),
+            cost=1e18,
+            path_length=0,
+            warp_ratio=0.0,
+            jump_rate=1.0,
+        )
+
+    ui, ti = m, end_t
+    ip, jp = [], []
+    h_steps = 0
+    while ui > 0 and ti > 0:
+        ip.append(ti - 1)
+        jp.append(ui - 1)
+        p = int(prev[ui, ti])
+        if p == 2:
+            ui -= 1
+            ti -= 1
+        elif p == 0:
+            ui -= 1
+            h_steps += 1
+        elif p == 1:
+            ti -= 1
+            h_steps += 1
+        else:
+            break
+
+    ip.reverse()
+    jp.reverse()
+    ip_arr = np.asarray(ip, dtype=np.int32)
+    jp_arr = np.asarray(jp, dtype=np.int32)
+    plen = int(len(ip_arr))
+    teacher_span = int(ip_arr[-1] - ip_arr[0] + 1) if plen else 0
+
+    return AlignInfo(
+        i_path=ip_arr,
+        j_path=jp_arr,
+        cost=float(dp[m, end_t]),
+        path_length=plen,
+        warp_ratio=float(plen / max(1, max(teacher_span, m))),
+        jump_rate=float(h_steps / max(1, plen)),
+    )
+
+
+def _align_cost_per_step(align: AlignInfo) -> float:
+    if align.path_length <= 0 or not np.isfinite(align.cost):
+        return 1e18
+    return float(align.cost / max(1, align.path_length))
+
+
+def _alignment_segment_info(
+    align: AlignInfo,
+    *,
+    ts: int,
+    us: int,
+    teacher_total: int,
+    user_total: int,
+    fps_t: float,
+    fps_u: float,
+) -> dict[str, Any]:
+    if align.path_length <= 0:
+        teacher_start = teacher_end = ts
+        user_start = user_end = us
+    else:
+        teacher_start = int(np.min(align.i_path)) + ts
+        teacher_end = int(np.max(align.i_path)) + ts + 1
+        user_start = int(np.min(align.j_path)) + us
+        user_end = int(np.max(align.j_path)) + us + 1
+
+    return {
+        "teacher_segment_frame": [teacher_start, teacher_end],
+        "user_segment_frame": [user_start, user_end],
+        "teacher_segment_sec": [float(teacher_start / max(1e-6, fps_t)), float(teacher_end / max(1e-6, fps_t))],
+        "user_segment_sec": [float(user_start / max(1e-6, fps_u)), float(user_end / max(1e-6, fps_u))],
+        "teacher_coverage_ratio": float(np.clip((teacher_end - teacher_start) / max(1, teacher_total), 0.0, 1.0)),
+        "user_coverage_ratio": float(np.clip((user_end - user_start) / max(1, user_total), 0.0, 1.0)),
+    }
 
 
 def _build_map(i_path: np.ndarray, j_path: np.ndarray, Tt: int, fps_u: float, fps_t: float, cfg: PipelineConfig) -> tuple[np.ndarray, np.ndarray]:
@@ -1155,6 +1288,7 @@ def _build_confidence_summary(
     align: AlignInfo,
     *,
     bad_alignment: bool,
+    partial_alignment: dict[str, Any] | None = None,
     cfg: PipelineConfig,
 ) -> dict[str, Any]:
     teacher = _quality_snapshot(teacher_quality, cfg)
@@ -1174,6 +1308,9 @@ def _build_confidence_summary(
     alignment_stability = float(np.clip(1.0 - (0.7 * jump_penalty + 0.3 * warp_penalty), 0.0, 1.0))
     if bad_alignment:
         alignment_stability *= 0.55
+    if partial_alignment and partial_alignment.get("applied"):
+        teacher_coverage = float(partial_alignment.get("teacher_coverage_ratio") or 0.0)
+        alignment_stability *= float(np.clip(0.65 + 0.35 * teacher_coverage, 0.35, 1.0))
 
     score = float(np.clip(
         0.5 * tracking_quality + 0.3 * alignment_stability + 0.2 * tempo_stability,
@@ -1212,6 +1349,15 @@ def _build_confidence_summary(
             "severity": "high" if bad_alignment else "medium",
             "message": "动作对齐稳定性不足，部分片段的匹配结果可能不够可靠。",
             "suggestion": "建议检查示范与学员视频的起始时刻是否接近，并尽量保留完整连续的动作片段。",
+        })
+    if partial_alignment and partial_alignment.get("applied"):
+        teacher_sec = partial_alignment.get("teacher_segment_sec") or [0.0, 0.0]
+        teacher_coverage = float(partial_alignment.get("teacher_coverage_ratio") or 0.0)
+        issues.append({
+            "code": "partial_alignment_applied",
+            "severity": "medium" if teacher_coverage >= 0.35 else "high",
+            "message": f"系统只在老师视频 {teacher_sec[0]:.2f}-{teacher_sec[1]:.2f} 秒范围内找到可靠匹配片段。",
+            "suggestion": "当前总分主要反映已匹配片段；如果希望得到整段评分，建议上传与老师视频动作范围更接近的学员片段。",
         })
     if tempo_stability < 0.60:
         issues.append({
@@ -1353,34 +1499,147 @@ def run(
 
     # mirror check (user)
     base_align = _banded_dtw(t_f2, u_f2, tq2, uq2, cfg.dtw_band_ratio)
-    base_cost = base_align.cost / max(1, base_align.path_length)
+    base_cost = _align_cost_per_step(base_align)
 
     u_body_m = _mirror_xyz(u_body)
     u_fm, _ = _build_feature(u_body_m, cfg)
     u_fm2 = u_fm[us:ue]
     mir_align = _banded_dtw(t_f2, u_fm2, tq2, uq2, cfg.dtw_band_ratio)
-    mir_cost = mir_align.cost / max(1, mir_align.path_length)
+    mir_cost = _align_cost_per_step(mir_align)
 
     mirror_detected = False
     mirror_applied_to = None
     gain = 0.0
 
+    base_mirror_gain = float((base_cost - mir_cost) / base_cost) if base_cost > 1e-9 else 0.0
+    global_candidates = [
+        {"mode": "global_dtw", "mirror": False, "align": base_align, "cost": base_cost, "u_body": u_body, "u_feat": u_f},
+        {"mode": "global_dtw", "mirror": True, "align": mir_align, "cost": mir_cost, "u_body": u_body_m, "u_feat": u_fm},
+    ]
+    global_best = global_candidates[1] if (mir_cost < base_cost and base_mirror_gain >= cfg.mirror_gain_force_apply) else global_candidates[0]
+
+    partial_candidates: list[dict[str, Any]] = []
+    trimmed_teacher_len = int(max(1, te - ts))
+    trimmed_user_len = int(max(1, ue - us))
+    length_ratio = float(max(trimmed_teacher_len, trimmed_user_len) / max(1, min(trimmed_teacher_len, trimmed_user_len)))
+    should_try_partial = bool(
+        cfg.partial_dtw_enabled
+        and trimmed_teacher_len >= 2
+        and trimmed_user_len >= 2
+        and (
+            length_ratio >= cfg.partial_dtw_length_ratio_trigger
+            or global_best["align"].jump_rate >= 0.35
+        )
+    )
+    if should_try_partial:
+        partial_base = _subsequence_dtw(t_f2, u_f2, tq2, uq2)
+        partial_mir = _subsequence_dtw(t_f2, u_fm2, tq2, uq2)
+        partial_base_cost = _align_cost_per_step(partial_base)
+        partial_mir_cost = _align_cost_per_step(partial_mir)
+        partial_mirror_gain = float((partial_base_cost - partial_mir_cost) / partial_base_cost) if partial_base_cost > 1e-9 else 0.0
+        partial_candidates = [
+            {
+                "mode": "partial_subsequence_dtw",
+                "mirror": False,
+                "align": partial_base,
+                "cost": partial_base_cost,
+                "u_body": u_body,
+                "u_feat": u_f,
+            },
+            {
+                "mode": "partial_subsequence_dtw",
+                "mirror": True,
+                "align": partial_mir,
+                "cost": partial_mir_cost,
+                "u_body": u_body_m,
+                "u_feat": u_fm,
+            },
+        ]
+        if not (partial_mir_cost < partial_base_cost and partial_mirror_gain >= cfg.mirror_gain_force_apply):
+            partial_candidates = [partial_candidates[0]]
+
+    chosen = global_best
+    partial_reason = "not_triggered"
+    if partial_candidates:
+        partial_best = min(partial_candidates, key=lambda item: float(item["cost"]))
+        partial_info_for_choice = _alignment_segment_info(
+            partial_best["align"],
+            ts=ts,
+            us=us,
+            teacher_total=t_body.shape[0],
+            user_total=u_body.shape[0],
+            fps_t=t_fps,
+            fps_u=u_fps,
+        )
+        global_cost = float(global_best["cost"])
+        partial_cost = float(partial_best["cost"])
+        partial_gain = float((global_cost - partial_cost) / global_cost) if global_cost > 1e-9 else 0.0
+        user_coverage_ok = float(partial_info_for_choice["user_coverage_ratio"]) >= cfg.partial_dtw_min_user_coverage
+        teacher_sec = partial_info_for_choice["teacher_segment_sec"]
+        user_sec = partial_info_for_choice["user_segment_sec"]
+        teacher_duration = float(teacher_sec[1] - teacher_sec[0])
+        user_duration = float(user_sec[1] - user_sec[0])
+        teacher_span_ok = (
+            teacher_duration >= cfg.partial_dtw_min_teacher_span_sec
+            and teacher_duration >= user_duration * cfg.partial_dtw_min_teacher_user_duration_ratio
+            and partial_best["align"].jump_rate < 0.75
+        )
+        wins_by_gain = partial_gain >= cfg.partial_dtw_min_cost_gain
+        wins_by_length = (
+            length_ratio >= cfg.partial_dtw_length_ratio_trigger
+            and partial_cost <= global_cost * cfg.partial_dtw_lenient_cost_multiplier
+        )
+        if user_coverage_ok and teacher_span_ok and (wins_by_gain or wins_by_length):
+            chosen = partial_best
+            partial_reason = "cost_gain" if wins_by_gain else "length_mismatch"
+        else:
+            partial_reason = "global_kept"
+
+    align = chosen["align"]
+    u_body_used = chosen["u_body"]
+    u_f_used = chosen["u_feat"]
+    alignment_mode = str(chosen["mode"])
+
     if base_cost > 1e-9:
-        gain = float((base_cost - mir_cost) / base_cost)
-    if (mir_cost < base_cost) and (gain >= cfg.mirror_gain_force_apply):
+        selected_plain_cost = base_cost
+        selected_mirror_cost = mir_cost
+        if alignment_mode == "partial_subsequence_dtw" and partial_candidates:
+            selected_plain = next((item for item in partial_candidates if not item["mirror"]), None)
+            selected_mirror = next((item for item in partial_candidates if item["mirror"]), None)
+            selected_plain_cost = float(selected_plain["cost"]) if selected_plain else base_cost
+            selected_mirror_cost = float(selected_mirror["cost"]) if selected_mirror else mir_cost
+        gain = float((selected_plain_cost - selected_mirror_cost) / max(1e-9, selected_plain_cost))
+    if bool(chosen["mirror"]) and gain >= cfg.mirror_gain_force_apply:
         mirror_detected = True
         mirror_applied_to = "user"
-        align = mir_align
-        u_body_used = u_body_m
-        u_f_used = u_fm
-    else:
-        align = base_align
-        u_body_used = u_body
-        u_f_used = u_f
 
     # global indices restored from trimmed alignment
     i_path = align.i_path + ts
     j_path = align.j_path + us
+    partial_alignment = {
+        "enabled": bool(cfg.partial_dtw_enabled),
+        "applied": bool(alignment_mode == "partial_subsequence_dtw"),
+        "mode": alignment_mode,
+        "selection_reason": partial_reason,
+        "length_ratio": float(length_ratio),
+        "global_normalized_cost": float(global_best["cost"]),
+        "selected_normalized_cost": float(chosen["cost"]),
+        "path_length": int(align.path_length),
+    }
+    partial_alignment.update(_alignment_segment_info(
+        align,
+        ts=ts,
+        us=us,
+        teacher_total=t_body.shape[0],
+        user_total=u_body_used.shape[0],
+        fps_t=t_fps,
+        fps_u=u_fps,
+    ))
+    matched_teacher_mask = np.ones(t_body.shape[0], dtype=bool)
+    if partial_alignment["applied"]:
+        seg_start, seg_end = partial_alignment["teacher_segment_frame"]
+        matched_teacher_mask[:] = False
+        matched_teacher_mask[int(seg_start):int(seg_end)] = True
 
     # mapping used for stable playback sync / alignment confidence
     teacher_to_user, map_user_sec = _build_map(i_path, j_path, Tt=t_body.shape[0], fps_u=u_fps, fps_t=t_fps, cfg=cfg)
@@ -1417,6 +1676,9 @@ def run(
         fps_u=u_fps,
         offset_sec=sync_offset_sec,
     )
+    accuracy_sync_user_frame = sync_user_frame
+    if partial_alignment["applied"]:
+        accuracy_sync_user_frame = teacher_to_user.astype(np.float32)
     matched_user_frame, matched_match_cost = _windowed_match_map(
         t_feat=t_f,
         u_feat=u_f_used,
@@ -1424,7 +1686,7 @@ def run(
         u_body=u_body_used,
         tq=tq.frame_quality,
         uq=uq.frame_quality,
-        sync_user_frame=sync_user_frame,
+        sync_user_frame=accuracy_sync_user_frame,
         fps_u=u_fps,
         cfg=cfg,
     )
@@ -1445,6 +1707,13 @@ def run(
     ju = []
     for i in range(Tt):
         j = int(np.clip(matched_user_frame[i], 0, u_body_used.shape[0] - 1))
+        if not bool(matched_teacher_mask[i]):
+            per_frame_feat_err[i] = np.nan
+            per_frame_match_quality[i] = 0.0
+            per_frame_top_idx[i] = np.asarray(KEY_JOINTS[:5], dtype=np.int16)
+            per_frame_top_err[i] = 0.0
+            per_frame_top_conf[i] = 0.0
+            continue
         d = np.linalg.norm(t_body[i] - u_body_used[j], axis=1)
         conf = np.minimum(t_vis[i], u_vis[j])
         d = np.nan_to_num(d, nan=0.0, posinf=0.0, neginf=0.0)
@@ -1464,21 +1733,21 @@ def run(
         per_frame_top_conf[i] = conf[order].astype(np.float32)
 
     err_curve = per_frame_feat_err.astype(np.float32)
-    mean_w_joint = float(np.mean(jw))
-    mean_u_joint = float(np.mean(ju))
-    mean_feat = float(np.nanmean(err_curve))
+    mean_w_joint = float(np.mean(jw)) if jw else 1.0
+    mean_u_joint = float(np.mean(ju)) if ju else 1.0
+    mean_feat = float(np.nanmean(err_curve)) if np.any(np.isfinite(err_curve)) else 1.0
 
     expected_ratio = float((ue - us) / max(1, (te - ts)))
     tempo_rel, tempo_conf, tempo_segments, tempo_dev_area, timing_offset_sec = _tempo_from_windowed_matches(
-        sync_user_frame=sync_user_frame,
+        sync_user_frame=accuracy_sync_user_frame,
         matched_user_frame=matched_user_frame,
         fps_t=t_fps,
         fps_u=u_fps,
-        frame_quality=np.minimum(tq.frame_quality, per_frame_match_quality),
+        frame_quality=np.minimum(tq.frame_quality, per_frame_match_quality) * matched_teacher_mask.astype(np.float32),
         cfg=cfg,
     )
 
-    valid_pose = tq.frame_quality >= cfg.invalid_frame_quality_thr
+    valid_pose = (tq.frame_quality >= cfg.invalid_frame_quality_thr) & matched_teacher_mask
     m_pose = _peak_pick(err_curve, cfg.marker_topk_pose, int(max(1, round(cfg.marker_min_gap_sec * t_fps))), valid_mask=valid_pose)
 
     m_tempo = []
@@ -1506,6 +1775,8 @@ def run(
     j_acc = np.zeros(33, dtype=np.float64)
     j_cnt = np.zeros(33, dtype=np.int32)
     for i in range(Tt):
+        if not bool(matched_teacher_mask[i]):
+            continue
         j = int(np.clip(matched_user_frame[i], 0, u_body_used.shape[0] - 1))
         d = np.linalg.norm(t_body[i] - u_body_used[j], axis=1)
         ok = np.isfinite(d)
@@ -1519,13 +1790,46 @@ def run(
         mean_w_joint=mean_w_joint,
         tempo_dev_area=tempo_dev_area,
         err_curve=err_curve,
-        low_quality_ratio=float(np.mean(tq.frame_quality < 0.55)),
+        low_quality_ratio=float(np.mean(tq.frame_quality[matched_teacher_mask] < 0.55)) if np.any(matched_teacher_mask) else 1.0,
         cfg=cfg,
     )
+    segment_score_total = float(score.total_score)
+    if partial_alignment["applied"]:
+        coverage = float(partial_alignment.get("teacher_coverage_ratio") or 0.0)
+        weight = float(np.clip(cfg.partial_dtw_score_coverage_weight, 0.0, 1.0))
+        adjusted_total = float(np.clip(score.total_score * ((1.0 - weight) + weight * coverage), 0.0, 100.0))
+        score = ScoreBreakdown(
+            score_pose=score.score_pose,
+            score_tempo=score.score_tempo,
+            score_smooth=score.score_smooth,
+            score_quality_penalty=score.score_quality_penalty,
+            total_score=adjusted_total,
+        )
+    partial_alignment["matched_segment_score"] = segment_score_total
+    partial_alignment["score_coverage_weight"] = float(cfg.partial_dtw_score_coverage_weight if partial_alignment["applied"] else 0.0)
 
     # per-frame explain rows
     frame_analysis = []
     for i in range(Tt):
+        if not bool(matched_teacher_mask[i]):
+            frame_analysis.append({
+                "frame": i,
+                "sec": float(i / t_fps),
+                "frame_error": None,
+                "frame_quality": float(tq.frame_quality[i]),
+                "severity": "unmatched",
+                "tempo_rel": 1.0,
+                "timing_offset_sec": None,
+                "sync_user_frame": None,
+                "sync_user_sec": None,
+                "matched_user_frame": None,
+                "matched_user_sec": None,
+                "match_cost": None,
+                "accuracy_match_mode": "unmatched_by_partial_alignment",
+                "top_joints_at_frame": [],
+                "advice": "该老师片段未与学员视频形成可靠匹配，本轮评分不把它作为主要扣分依据。",
+            })
+            continue
         top_rows = []
         for k in range(5):
             idx = int(per_frame_top_idx[i, k])
@@ -1560,8 +1864,8 @@ def run(
             "severity": sev,
             "tempo_rel": tr,
             "timing_offset_sec": offset_sec,
-            "sync_user_frame": int(np.clip(round(float(sync_user_frame[i])), 0, max(0, u_body_used.shape[0] - 1))),
-            "sync_user_sec": float(sync_user_frame[i] / max(1e-6, u_fps)),
+            "sync_user_frame": int(np.clip(round(float(accuracy_sync_user_frame[i])), 0, max(0, u_body_used.shape[0] - 1))),
+            "sync_user_sec": float(accuracy_sync_user_frame[i] / max(1e-6, u_fps)),
             "matched_user_frame": int(np.clip(matched_user_frame[i], 0, max(0, u_body_used.shape[0] - 1))),
             "matched_user_sec": float(matched_user_sec[i]),
             "match_cost": float(matched_match_cost[i]),
@@ -1618,6 +1922,7 @@ def run(
         tempo_conf,
         align,
         bad_alignment=bad_alignment,
+        partial_alignment=partial_alignment,
         cfg=cfg,
     )
 
@@ -1652,12 +1957,15 @@ def run(
             "dims": feat_dim,
         },
         "alignment_quality": {
+            "mode": alignment_mode,
             "path_length": int(align.path_length),
             "warp_ratio": float(align.warp_ratio),
             "jump_rate": float(align.jump_rate),
             "cost": float(align.cost),
+            "normalized_cost": float(chosen["cost"]),
             "fallback_linear_map_applied": bool(bad_alignment),
         },
+        "partial_alignment": partial_alignment,
         "audio_alignment": audio_alignment,
         "timing_alignment": {
             "sync_source": sync_source,
@@ -1723,6 +2031,8 @@ def run(
         expected_ratio=np.float32(expected_ratio),
         teacher_to_user=teacher_to_user.astype(np.int32),
         sync_user_frame=np.rint(sync_user_frame).astype(np.int32),
+        accuracy_sync_user_frame=np.rint(accuracy_sync_user_frame).astype(np.int32),
+        matched_teacher_mask=matched_teacher_mask.astype(np.int8),
         matched_user_frame=matched_user_frame.astype(np.int32),
         map_user_sec=map_user_sec.astype(np.float32),
         matched_user_sec=matched_user_sec.astype(np.float32),
@@ -1762,6 +2072,9 @@ def run(
         "mirror_detected": bool(mirror_detected),
         "feature_type": cfg.feature_type_default,
         "dtw_band_ratio": cfg.dtw_band_ratio,
+        "alignment_mode": alignment_mode,
+        "partial_alignment_applied": bool(partial_alignment.get("applied")),
+        "partial_teacher_coverage_ratio": float(partial_alignment.get("teacher_coverage_ratio") or 0.0),
         "confidence_score": confidence_summary["score"],
         "confidence_level": confidence_summary["level"],
         "confidence_summary": confidence_summary["summary"],

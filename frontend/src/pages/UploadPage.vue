@@ -287,6 +287,7 @@ import { RouterLink, useRouter } from "vue-router";
 import { absMediaUrl } from "../api/http";
 import { listPipelineTasks } from "../api/pipelines";
 import { deleteVideo, listVideos, renameVideo, uploadVideo } from "../api/videos";
+import { friendlyError } from "../utils/errors";
 import type { PipelineTaskListItem, RoleType, VideoItem, VideoUploadResponse } from "../types/video";
 
 const uploadActionText = "提交素材";
@@ -395,7 +396,7 @@ async function saveRename(item: VideoItem) {
     actionMessage.value = response.message;
     await loadAllContext();
   } catch (err: any) {
-    error.value = err?.response?.data?.detail ?? err?.message ?? "素材重命名失败";
+    error.value = friendlyError(err, "素材重命名失败");
     busyVideoId.value = "";
   }
 }
@@ -403,6 +404,8 @@ async function saveRename(item: VideoItem) {
 async function removeItem(item: VideoItem) {
   if (!window.confirm(`确定删除素材“${item.filename}”吗？`)) return;
   busyVideoId.value = item.video_id;
+  error.value = "";
+  actionMessage.value = "";
   try {
     const response = await deleteVideo({ videoId: item.video_id, role: item.role });
     if (result.value?.video_id === item.video_id) result.value = null;
@@ -410,7 +413,7 @@ async function removeItem(item: VideoItem) {
     actionMessage.value = response.message;
     await loadAllContext();
   } catch (err: any) {
-    error.value = err?.response?.data?.detail ?? err?.message ?? "素材删除失败";
+    error.value = friendlyError(err, "素材删除失败");
   } finally {
     if (busyVideoId.value === item.video_id) busyVideoId.value = "";
   }
@@ -429,7 +432,7 @@ async function submitUpload() {
     actionMessage.value = "素材已入库，素材库和推荐配对已经同步更新。";
     await loadAllContext();
   } catch (err: any) {
-    error.value = err?.response?.data?.detail ?? err?.message ?? "上传失败";
+    error.value = friendlyError(err, "上传失败");
   } finally {
     uploading.value = false;
   }
@@ -451,7 +454,7 @@ async function loadAllContext() {
     const [videos] = await Promise.all([listVideos("all"), loadRecentTask()]);
     items.value = videos.items;
   } catch (err: any) {
-    error.value = err?.response?.data?.detail ?? err?.message ?? "素材库加载失败";
+    error.value = friendlyError(err, "素材库加载失败");
   } finally {
     listing.value = false;
   }

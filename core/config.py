@@ -36,6 +36,14 @@ class PipelineConfig:
     fused_w_kin: float = 0.20
 
     dtw_band_ratio: float = 0.15
+    partial_dtw_enabled: bool = True
+    partial_dtw_length_ratio_trigger: float = 1.25
+    partial_dtw_min_cost_gain: float = 0.08
+    partial_dtw_lenient_cost_multiplier: float = 1.08
+    partial_dtw_min_user_coverage: float = 0.80
+    partial_dtw_min_teacher_span_sec: float = 1.0
+    partial_dtw_min_teacher_user_duration_ratio: float = 0.25
+    partial_dtw_score_coverage_weight: float = 0.25
 
     map_smooth_win_sec: float = 0.8
 

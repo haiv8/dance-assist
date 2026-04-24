@@ -4,6 +4,17 @@ from typing import Any
 
 import numpy as np
 
+from app.services.record_issues import (
+    extract_report_issues,
+    fallback_beginner_summary,
+    fallback_confidence_summary,
+    fallback_overall_advice,
+    fallback_teaching_summary,
+    normalized_confidence_issues,
+    normalized_confidence_summary,
+    safe_text,
+)
+
 
 def task_pair_name(task: dict[str, Any]) -> str:
     pair_name = task.get("pair_name")
@@ -89,6 +100,48 @@ def task_progress(task: dict[str, Any]) -> float:
     return max(0.0, min(1.0, progress))
 
 
+def report_issue_count(report: dict[str, Any]) -> int:
+    confidence = report.get("confidence") if isinstance(report.get("confidence"), dict) else {}
+    values = (
+        report.get("markers"),
+        confidence.get("issues") if isinstance(confidence, dict) else None,
+        report.get("tempo_segments"),
+    )
+    return sum(len(value) for value in values if isinstance(value, list))
+
+
+def normalize_report_text_sections(report: dict[str, Any]) -> dict[str, Any]:
+    out = dict(report)
+    score_total = task_score_total({"report": out})
+    issue_count = report_issue_count(out)
+
+    confidence = dict(out.get("confidence")) if isinstance(out.get("confidence"), dict) else {}
+    if confidence:
+        confidence["summary"] = normalized_confidence_summary(confidence)
+        confidence["issues"] = normalized_confidence_issues(confidence)
+        out["confidence"] = confidence
+
+    recommendations = dict(out.get("recommendations")) if isinstance(out.get("recommendations"), dict) else {}
+    recommendations["overall"] = safe_text(recommendations.get("overall"), fallback_overall_advice(score_total))
+    out["recommendations"] = recommendations
+
+    beginner_report = dict(out.get("beginner_report")) if isinstance(out.get("beginner_report"), dict) else {}
+    beginner_report["summary"] = safe_text(
+        beginner_report.get("summary"),
+        fallback_beginner_summary(score_total, issue_count),
+    )
+    out["beginner_report"] = beginner_report
+
+    teaching_report = dict(out.get("teaching_report")) if isinstance(out.get("teaching_report"), dict) else {}
+    teaching_report["summary"] = safe_text(
+        teaching_report.get("summary"),
+        fallback_teaching_summary(score_total, issue_count),
+    )
+    out["teaching_report"] = teaching_report
+
+    return out
+
+
 def task_summary(task: dict[str, Any]) -> dict[str, Any]:
     return {
         "pipeline_id": str(task.get("pipeline_id", "") or ""),
@@ -120,7 +173,7 @@ def summarize_report(report: dict[str, Any] | None) -> dict[str, Any] | None:
     if not isinstance(report, dict):
         return report
 
-    out = {k: v for k, v in report.items() if k != "frame_analysis"}
+    out = normalize_report_text_sections({k: v for k, v in report.items() if k != "frame_analysis"})
     rows = report.get("frame_analysis")
     if isinstance(rows, list):
         out["frame_analysis_count"] = len(rows)
@@ -274,6 +327,7 @@ def pipeline_result_payload(task: dict[str, Any], pipeline_id: str) -> dict[str,
 
 
 def pipeline_result_summary_payload(task: dict[str, Any], pipeline_id: str) -> dict[str, Any]:
+    report_payload = task.get("report") if isinstance(task.get("report"), dict) else None
     return {
         "pipeline_id": task.get("pipeline_id", pipeline_id),
         "pair_name": task_pair_name(task),
@@ -293,9 +347,27 @@ def pipeline_result_summary_payload(task: dict[str, Any], pipeline_id: str) -> d
         "cancel_requested_at": task.get("cancel_requested_at"),
         "timeout_sec": task.get("timeout_sec"),
         "timeout_at": task.get("timeout_at"),
-        "report": summarize_report(task.get("report")),
+        "report": summarize_report(report_payload),
         "timeline": summarize_timeline(task.get("timeline")),
         "files": task.get("files"),
+        "issues": extract_report_issues(
+            {
+                "pipeline_id": task.get("pipeline_id", pipeline_id),
+                "pair_name": task_pair_name(task),
+                "teacher_video_id": task.get("teacher_video_id"),
+                "user_video_id": task.get("user_video_id"),
+                "finished_at": task.get("finished_at"),
+                "updated_at": task.get("updated_at"),
+                "score_total": task_score_total(task),
+                "confidence_score": task_confidence_score(task),
+                "confidence_summary": (
+                    report_payload.get("confidence", {}).get("summary")
+                    if isinstance(report_payload, dict) and isinstance(report_payload.get("confidence"), dict)
+                    else None
+                ),
+                "report": report_payload or {},
+            }
+        ),
     }
 
 
@@ -358,7 +430,8 @@ def pipeline_frame_range_payload(
 
 
 def analysis_report_fallback_item(item: dict[str, Any], task: dict[str, Any]) -> dict[str, Any]:
-    report = task.get("report") if isinstance(task.get("report"), dict) else {}
+    raw_report = task.get("report") if isinstance(task.get("report"), dict) else {}
+    report = normalize_report_text_sections(raw_report)
     confidence = report.get("confidence") if isinstance(report, dict) else {}
     recommendations = report.get("recommendations") if isinstance(report, dict) else {}
     beginner_report = report.get("beginner_report") if isinstance(report, dict) else {}
@@ -369,17 +442,30 @@ def analysis_report_fallback_item(item: dict[str, Any], task: dict[str, Any]) ->
         "score_pose": scores.get("score_pose") if isinstance(scores, dict) else None,
         "score_tempo": scores.get("score_tempo") if isinstance(scores, dict) else None,
         "confidence_level": confidence.get("level") if isinstance(confidence, dict) else None,
-        "overall_advice": recommendations.get("overall") if isinstance(recommendations, dict) else None,
-        "confidence_summary": confidence.get("summary") if isinstance(confidence, dict) else None,
-        "beginner_summary": beginner_report.get("summary") if isinstance(beginner_report, dict) else None,
-        "teaching_summary": teaching_report.get("summary") if isinstance(teaching_report, dict) else None,
+        "overall_advice": recommendations.get("overall") if isinstance(recommendations, dict) else fallback_overall_advice(item.get("score_total")),
+        "confidence_summary": (
+            confidence.get("summary")
+            if isinstance(confidence, dict)
+            else fallback_confidence_summary(item.get("confidence_score"))
+        ),
+        "beginner_summary": (
+            beginner_report.get("summary")
+            if isinstance(beginner_report, dict)
+            else fallback_beginner_summary(item.get("score_total"), 0)
+        ),
+        "teaching_summary": (
+            teaching_report.get("summary")
+            if isinstance(teaching_report, dict)
+            else fallback_teaching_summary(item.get("score_total"), 0)
+        ),
         "top_joints": report.get("top_joints") if isinstance(report.get("top_joints"), list) else [],
         "files": task.get("files") if isinstance(task.get("files"), dict) else {},
     }
 
 
 def analysis_report_payload_from_summary(summary: dict[str, Any]) -> dict[str, Any]:
-    report = summary.get("report") if isinstance(summary.get("report"), dict) else {}
+    raw_report = summary.get("report") if isinstance(summary.get("report"), dict) else {}
+    report = normalize_report_text_sections(raw_report)
     confidence = report.get("confidence") if isinstance(report, dict) else {}
     recommendations = report.get("recommendations") if isinstance(report, dict) else {}
     beginner_report = report.get("beginner_report") if isinstance(report, dict) else {}

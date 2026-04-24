@@ -142,6 +142,7 @@ class PipelineResultSummaryResponse(BaseModel):
     report: dict | None = None
     timeline: dict | None = None
     files: dict | None = None
+    issues: list[dict] = Field(default_factory=list)
 
 
 class PipelineFrameDetailResponse(BaseModel):
@@ -237,6 +238,87 @@ class AnalysisReportListResponse(BaseModel):
 
 class AnalysisReportDetailResponse(AnalysisReportItem):
     report: dict | None = None
+
+
+IssueSeverityType = Literal["high", "medium", "low"]
+
+
+class RecordWorkspaceItem(PipelineTaskItem):
+    score_pose: float | None = None
+    score_tempo: float | None = None
+    confidence_level: str | None = None
+    overall_advice: str | None = None
+    confidence_summary: str | None = None
+    beginner_summary: str | None = None
+    teaching_summary: str | None = None
+    top_joints: list = Field(default_factory=list)
+    files: dict | None = None
+    has_report: bool = False
+    issue_count: int = 0
+
+
+class RecordWorkspaceIssueItem(BaseModel):
+    id: str
+    pipeline_id: str
+    pair_name: str
+    teacher_video_id: str | None = None
+    user_video_id: str | None = None
+    type: str
+    severity: IssueSeverityType
+    sec: float
+    frame: int | None = None
+    summary: str
+    action: str | None = None
+    finished_at: str | None = None
+    score_total: float | None = None
+    confidence_score: float | None = None
+
+
+class RecordWorkspaceResponse(BaseModel):
+    items: list[RecordWorkspaceItem]
+    issues: list[RecordWorkspaceIssueItem]
+    total: int
+    issue_total: int
+    limit: int
+
+
+class AiCoachRequest(BaseModel):
+    force_refresh: bool = False
+
+
+class AiCoachPriorityIssue(BaseModel):
+    title: str
+    severity: IssueSeverityType
+    time_hint: str | None = None
+    reason: str
+    practice_tip: str
+
+
+class AiCoachPracticeStep(BaseModel):
+    title: str
+    duration_min: int
+    steps: list[str] = Field(default_factory=list)
+    success_criteria: str
+
+
+class AiCoachResponse(BaseModel):
+    pipeline_id: str
+    pair_name: str | None = None
+    generated_by: Literal["openai", "aliyun", "local_fallback"]
+    model: str | None = None
+    summary: str
+    priority_issues: list[AiCoachPriorityIssue] = Field(default_factory=list)
+    practice_plan: list[AiCoachPracticeStep] = Field(default_factory=list)
+    teacher_notes: list[str] = Field(default_factory=list)
+    safety_note: str | None = None
+    setup_hint: str | None = None
+
+
+class AiProviderStatusResponse(BaseModel):
+    provider: str
+    configured: bool
+    model: str | None = None
+    base_url: str | None = None
 
 
 class FailureStatItem(BaseModel):

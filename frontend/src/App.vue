@@ -38,10 +38,16 @@ const currentSection = computed(() => {
   }
   return navItems.find((item) => path.startsWith(item.to)) ?? navItems[1];
 });
+
+const shellClasses = computed(() => [
+  "app-shell",
+  "compact-shell",
+  { "compare-shell": route.path.startsWith("/compare") },
+]);
 </script>
 
 <template>
-  <div class="app-shell compact-shell">
+  <div :class="shellClasses">
     <aside class="sidebar compact-sidebar">
       <div class="brand-block editorial-brand compact-brand">
         <div class="brand-mark">DA</div>

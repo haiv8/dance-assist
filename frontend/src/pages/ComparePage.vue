@@ -226,6 +226,9 @@
           <p class="helper-text">{{ result?.pair_name || "本轮分析完成后，结果会显示在这里。" }}</p>
         </div>
         <div class="mode-switch" v-if="result">
+          <button class="secondary-button" :disabled="aiCoachLoading || !pipelineId" @click="loadAiCoach">
+            {{ aiCoachLoading ? "AI生成中..." : "AI助教解读" }}
+          </button>
           <button class="secondary-button" :class="{ activeMode: analysisMode === 'overall' }" @click="analysisMode = 'overall'">概览</button>
           <button class="secondary-button" :class="{ activeMode: analysisMode === 'local' }" :disabled="!hasFrameAnalysis" @click="analysisMode = 'local'">当前时刻</button>
         </div>
@@ -245,6 +248,31 @@
           <div class="metric-chip"><strong>节奏</strong><span>{{ tempoScore.toFixed(2) }}</span></div>
           <div class="metric-chip"><strong>可信度</strong><span>{{ confidenceScoreText }}</span></div>
         </div>
+
+        <article class="surface-card sub-card simple-card ai-coach-card" v-if="aiCoach || aiCoachError">
+          <div class="result-section-head">
+            <h3>AI助教</h3>
+            <span v-if="aiCoach" class="tag neutral">{{ aiCoachSourceText }}</span>
+          </div>
+          <p v-if="aiCoachError" class="feedback-inline">{{ aiCoachError }}</p>
+          <template v-if="aiCoach">
+            <p class="helper-text focus-copy">{{ aiCoach.summary }}</p>
+            <div class="ai-coach-grid">
+              <div class="list-item-card" v-for="issue in aiCoach.priority_issues.slice(0, 3)" :key="`${issue.title}_${issue.time_hint}`">
+                <strong>{{ issue.title }}</strong>
+                <span class="helper-text">{{ issue.time_hint ? `${issue.time_hint} · ` : "" }}{{ issue.reason }}</span>
+                <span class="helper-text">练法：{{ issue.practice_tip }}</span>
+              </div>
+            </div>
+            <div class="ai-plan-list" v-if="aiCoach.practice_plan.length">
+              <div class="summary-row" v-for="step in aiCoach.practice_plan" :key="step.title">
+                <span>{{ step.title }} · {{ step.duration_min }}分钟</span>
+                <strong>{{ step.success_criteria }}</strong>
+              </div>
+            </div>
+            <p class="helper-text" v-if="aiCoach.setup_hint">{{ aiCoach.setup_hint }}</p>
+          </template>
+        </article>
 
         <div class="analysis-result-grid">
           <article class="surface-card sub-card simple-card">
@@ -343,6 +371,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRoute } from "vue-router";
+import { getAiCoachReport } from "../api/ai";
 import { absMediaUrl } from "../api/http";
 import {
   cancelPipeline,
@@ -354,8 +383,10 @@ import {
   runPipeline,
 } from "../api/pipelines";
 import { normalizedConfidenceIssues, normalizedConfidenceSummary } from "../utils/confidence";
+import { friendlyError } from "../utils/errors";
 import { listVideos } from "../api/videos";
 import type {
+  AiCoachResponse,
   PipelineFrameRangeResponse,
   PipelineResultResponse,
   PipelineRunResponse,
@@ -381,6 +412,9 @@ const pipelineMessage = ref("");
 const cancelRequested = ref(false);
 const cancelingPipeline = ref(false);
 const result = ref<PipelineResultResponse | null>(null);
+const aiCoach = ref<AiCoachResponse | null>(null);
+const aiCoachLoading = ref(false);
+const aiCoachError = ref("");
 const analysisMode = ref<"overall" | "local">("overall");
 const frameDetailCache = ref<Record<number, Record<string, any>>>({});
 const frameDetailLoading = ref(false);
@@ -524,6 +558,12 @@ const confidenceScoreText = computed(() => {
 });
 const confidenceSummaryText = computed(() => normalizedConfidenceSummary(confidenceData.value));
 const confidenceIssues = computed<any[]>(() => normalizedConfidenceIssues(confidenceData.value));
+const aiCoachSourceText = computed(() => {
+  if (!aiCoach.value) return "";
+  if (aiCoach.value.generated_by === "aliyun") return aiCoach.value.model || "阿里云百炼";
+  if (aiCoach.value.generated_by === "openai") return aiCoach.value.model || "OpenAI";
+  return "本地兜底";
+});
 const confidenceTone = computed(() => {
   const level = String(confidenceData.value?.level ?? "");
   if (level === "high") return "ok";
@@ -933,7 +973,7 @@ async function loadList() {
     if (!teacherId.value && teacherItems.value.length > 0) teacherId.value = teacherItems.value[0].video_id;
     if (!userId.value && userItems.value.length > 0) userId.value = userItems.value[0].video_id;
   } catch (e: any) {
-    error.value = e?.response?.data?.detail ?? e?.message ?? "视频列表加载失败";
+    error.value = friendlyError(e, "视频列表加载失败");
   } finally {
     loading.value = false;
   }
@@ -953,11 +993,13 @@ async function pollStatus(id: string) {
       }
       applyPipelineMeta(result.value);
       analysisMode.value = "overall";
+      aiCoach.value = null;
+      aiCoachError.value = "";
     }
   } catch (e: any) {
     stopPolling();
     analyzing.value = false;
-    error.value = e?.response?.data?.detail ?? e?.message ?? "流程状态查询失败";
+    error.value = friendlyError(e, "流程状态查询失败");
   }
 }
 
@@ -965,6 +1007,8 @@ async function startAnalysis() {
   if (!teacherId.value || !userId.value) return;
   analyzing.value = true;
   result.value = null;
+  aiCoach.value = null;
+  aiCoachError.value = "";
   frameDetailCache.value = {};
   frameDetailLoading.value = false;
   pipelineMessage.value = "";
@@ -987,7 +1031,20 @@ async function startAnalysis() {
     await pollStatus(response.pipeline_id);
   } catch (e: any) {
     analyzing.value = false;
-    error.value = e?.response?.data?.detail ?? e?.message ?? "流程启动失败";
+    error.value = friendlyError(e, "流程启动失败");
+  }
+}
+
+async function loadAiCoach() {
+  if (!pipelineId.value) return;
+  aiCoachLoading.value = true;
+  aiCoachError.value = "";
+  try {
+    aiCoach.value = await getAiCoachReport(pipelineId.value);
+  } catch (e: any) {
+    aiCoachError.value = friendlyError(e, "AI助教生成失败");
+  } finally {
+    aiCoachLoading.value = false;
   }
 }
 
@@ -1003,7 +1060,7 @@ async function cancelCurrentPipeline() {
       stopPolling();
     }
   } catch (e: any) {
-    error.value = e?.response?.data?.detail ?? e?.message ?? "取消任务失败";
+    error.value = friendlyError(e, "取消任务失败");
   } finally {
     cancelingPipeline.value = false;
   }
@@ -1074,6 +1131,8 @@ watch([teacherMuted, userMuted], applyMuteState);
 
 watch([teacherId, userId], () => {
   result.value = null;
+  aiCoach.value = null;
+  aiCoachError.value = "";
   analysisMode.value = "overall";
   frameDetailCache.value = {};
   frameDetailLoading.value = false;
@@ -1130,6 +1189,28 @@ onBeforeUnmount(() => {
   gap: 18px;
 }
 
+.compare-workbench {
+  gap: 14px;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas:
+    "head"
+    "workbench"
+    "result";
+  align-items: stretch;
+}
+
+.compare-workbench > .compare-head {
+  grid-area: head;
+}
+
+.compare-workbench > .analysis-workbench {
+  grid-area: workbench;
+}
+
+.compare-workbench > .analysis-results {
+  grid-area: result;
+}
+
 .compare-kpi-row {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -1164,14 +1245,39 @@ onBeforeUnmount(() => {
 }
 
 .analysis-workbench {
-  grid-template-columns: 320px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   align-items: start;
+}
+
+.analysis-rail {
+  grid-template-columns: minmax(260px, 0.72fr) minmax(320px, 1fr);
+  align-items: stretch;
 }
 
 .analysis-config-card,
 .analysis-session-card,
 .analysis-stage-card {
-  overflow: hidden;
+  overflow: visible;
+}
+
+.analysis-config-card .panel-head h2::after,
+.analysis-session-card .panel-head h2::after,
+.analysis-stage-card .panel-head h2::after {
+  content: none !important;
+}
+
+.analysis-workbench .panel-head.compact-head > div::after {
+  content: none !important;
+  display: none !important;
+}
+
+.analysis-workbench .panel-head.compact-head > div {
+  display: block !important;
+  width: auto !important;
+}
+
+.analysis-workbench .panel-head.compact-head > div:hover > .helper-text {
+  display: none !important;
 }
 
 .rail-actions {
@@ -1251,20 +1357,29 @@ onBeforeUnmount(() => {
 
 .video-compare-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
+  grid-template-columns: repeat(2, minmax(380px, 1fr));
+  gap: 16px;
 }
 
 .compact-stage-panel {
   display: grid;
-  grid-template-rows: auto minmax(320px, 1fr);
+  grid-template-rows: auto minmax(clamp(380px, 34vw, 640px), 1fr);
   min-height: 100%;
 }
 
 .compact-stage-panel .player {
-  min-height: 320px;
-  max-height: 520px;
-  object-fit: cover;
+  width: 100%;
+  min-height: clamp(380px, 34vw, 640px);
+  max-height: min(70vh, 720px);
+  object-fit: contain;
+  background: #0f172a;
+}
+
+.analysis-stage-card .player-frame {
+  min-height: clamp(380px, 34vw, 640px);
+  background:
+    radial-gradient(circle at 20% 12%, rgba(226, 109, 61, 0.14), transparent 30%),
+    linear-gradient(180deg, #111827 0%, #0f172a 100%);
 }
 
 .stage-timeline {
@@ -1312,6 +1427,24 @@ onBeforeUnmount(() => {
   grid-template-columns: minmax(0, 1.1fr) minmax(300px, 0.9fr);
 }
 
+.ai-coach-card {
+  border-color: rgba(36, 87, 214, 0.16);
+  background:
+    radial-gradient(circle at top right, rgba(36, 87, 214, 0.1), transparent 30%),
+    rgba(255, 255, 255, 0.86);
+}
+
+.ai-coach-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.ai-plan-list {
+  display: grid;
+  gap: 10px;
+}
+
 .compare-page .sub-card {
   box-shadow: none;
   background: rgba(255, 255, 255, 0.76);
@@ -1340,9 +1473,9 @@ onBeforeUnmount(() => {
 .focus-marker-item {
   width: 100%;
   text-align: left;
-  border: 1px solid rgba(226, 109, 61, 0.16);
-  background: rgba(255, 247, 242, 0.9);
-  border-radius: 14px;
+  border: 1px solid rgba(15, 143, 179, 0.18);
+  background: rgba(248, 252, 255, 0.92);
+  border-radius: 18px;
   padding: 12px 14px;
   display: grid;
   gap: 6px;
@@ -1368,11 +1501,11 @@ onBeforeUnmount(() => {
 }
 
 .m-pose {
-  color: #972b21;
+  color: #1d4ed8;
 }
 
 .m-tempo {
-  color: #9a6510;
+  color: #0f8fb3;
 }
 
 .m-track {
@@ -1380,10 +1513,10 @@ onBeforeUnmount(() => {
 }
 
 .activeMode {
-  background: linear-gradient(135deg, var(--accent) 0%, #eb8d56 100%);
+  background: linear-gradient(135deg, var(--accent) 0%, #38bdf8 100%);
   color: #fff;
   border-color: transparent;
-  box-shadow: 0 8px 18px rgba(226, 109, 61, 0.18);
+  box-shadow: 0 12px 24px rgba(15, 143, 179, 0.22);
 }
 
 @media (max-width: 1280px) {
@@ -1391,11 +1524,16 @@ onBeforeUnmount(() => {
   .analysis-result-grid {
     grid-template-columns: 1fr;
   }
+
+  .analysis-rail {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 1024px) {
   .compare-kpi-row,
   .video-compare-grid,
+  .ai-coach-grid,
   .result-metrics,
   .local-frame-grid,
   .simple-downloads {

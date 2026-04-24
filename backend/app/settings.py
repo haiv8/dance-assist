@@ -115,6 +115,18 @@ class Settings:
     PIPELINE_RETRY_BACKOFF_SEC: int = _int_env("DANCE_ASSIST_PIPELINE_RETRY_BACKOFF_SEC", 2)
     PIPELINE_JOB_TIMEOUT_SEC: int = _int_env("DANCE_ASSIST_PIPELINE_JOB_TIMEOUT_SEC", 900)
     MIN_FREE_DISK_GB: int = _int_env("DANCE_ASSIST_MIN_FREE_DISK_GB", 2)
+    AI_PROVIDER: str = _str_env("DANCE_ASSIST_AI_PROVIDER", "aliyun")
+    OPENAI_API_KEY: str = _str_env("DANCE_ASSIST_OPENAI_API_KEY", _str_env("OPENAI_API_KEY", ""))
+    OPENAI_MODEL: str = _str_env("DANCE_ASSIST_OPENAI_MODEL", "gpt-4.1-mini")
+    OPENAI_BASE_URL: str = _str_env("DANCE_ASSIST_OPENAI_BASE_URL", "https://api.openai.com/v1")
+    OPENAI_TIMEOUT_SEC: int = _int_env("DANCE_ASSIST_OPENAI_TIMEOUT_SEC", 30)
+    ALIYUN_API_KEY: str = _str_env(
+        "DANCE_ASSIST_ALIYUN_API_KEY",
+        _str_env("ALIYUN_API_KEY", _str_env("DASHSCOPE_API_KEY", "")),
+    )
+    ALIYUN_MODEL: str = _str_env("DANCE_ASSIST_ALIYUN_MODEL", "qwen-flash")
+    ALIYUN_BASE_URL: str = _str_env("DANCE_ASSIST_ALIYUN_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
+    ALIYUN_TIMEOUT_SEC: int = _int_env("DANCE_ASSIST_ALIYUN_TIMEOUT_SEC", 90)
 
     BASE_DIR = Path(__file__).resolve().parents[1]  # backend/
     PROJECT_ROOT = BASE_DIR.parent  # dance-assist/

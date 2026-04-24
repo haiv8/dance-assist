@@ -8,8 +8,10 @@ import uuid
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.ai import router as ai_router
 from app.api.media import router as media_router
 from app.api.pipelines import router as pipelines_router
+from app.api.records import router as records_router
 from app.api.reports import router as reports_router
 from app.api.system import router as system_router
 from app.api.videos import router as videos_router
@@ -80,6 +82,8 @@ def create_app() -> FastAPI:
     # Backward-compatible route prefix.
     app.include_router(videos_router, prefix=settings.API_PREFIX)
     app.include_router(pipelines_router, prefix=settings.API_PREFIX)
+    app.include_router(ai_router, prefix=settings.API_PREFIX)
+    app.include_router(records_router, prefix=settings.API_PREFIX)
     app.include_router(reports_router, prefix=settings.API_PREFIX)
     app.include_router(system_router, prefix=settings.API_PREFIX)
 
@@ -87,6 +91,8 @@ def create_app() -> FastAPI:
     if settings.ENABLE_V1_ROUTES:
         app.include_router(videos_router, prefix=settings.API_V1_PREFIX)
         app.include_router(pipelines_router, prefix=settings.API_V1_PREFIX)
+        app.include_router(ai_router, prefix=settings.API_V1_PREFIX)
+        app.include_router(records_router, prefix=settings.API_V1_PREFIX)
         app.include_router(reports_router, prefix=settings.API_V1_PREFIX)
         app.include_router(system_router, prefix=settings.API_V1_PREFIX)
 

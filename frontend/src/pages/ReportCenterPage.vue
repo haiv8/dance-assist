@@ -299,6 +299,7 @@ import { absMediaUrl } from "../api/http";
 import { deletePipelineTask, getAnalysisReport, listAnalysisReports } from "../api/pipelines";
 import { focusDetailPanel } from "../utils/detailPanel";
 import { normalizedConfidenceSummary } from "../utils/confidence";
+import { friendlyError } from "../utils/errors";
 import type { AnalysisReportDetailResponse, AnalysisReportItem } from "../types/video";
 
 type DetailTextSection = {
@@ -479,7 +480,7 @@ async function loadReports(options?: { openFirst?: boolean; keepSelection?: bool
       selectedReportId.value = filteredReports.value[0]?.pipeline_id || "";
     }
   } catch (err: any) {
-    error.value = err?.response?.data?.detail ?? err?.message ?? "报告列表加载失败";
+    error.value = friendlyError(err, "报告列表加载失败");
   } finally {
     loading.value = false;
   }
@@ -504,7 +505,7 @@ async function openReport(pipelineId: string) {
     focusDetailPanel(detailPanelRef, { forceScroll: true });
   } catch (err: any) {
     detail.value = null;
-    detailError.value = err?.response?.data?.detail ?? err?.message ?? "报告详情加载失败";
+    detailError.value = friendlyError(err, "报告详情加载失败");
   } finally {
     detailLoading.value = false;
   }
@@ -553,7 +554,7 @@ async function deleteSelectedReport() {
 
     await openReport(nextReport.pipeline_id);
   } catch (err: any) {
-    detailError.value = err?.response?.data?.detail ?? err?.message ?? "删除报告失败";
+    detailError.value = friendlyError(err, "删除报告失败");
   } finally {
     deletingReport.value = false;
   }

@@ -3,7 +3,7 @@
     <section class="surface-card page-head settings-head">
       <div class="page-head-row">
         <div>
-          <h1>系统设置</h1>
+          <h1>系统设置 <InfoHint text="把运行状态、存储占用和维护动作收在一个巡检工作台里，方便长期本地使用时快速定位问题。" /></h1>
           <p class="page-subtitle">把运行状态、存储占用和维护动作收在一个巡检工作台里，方便长期本地使用时快速定位问题。</p>
         </div>
         <div class="action-row">
@@ -37,7 +37,7 @@
       <article class="surface-card health-hero" :data-tone="healthTone">
         <div class="panel-head compact-head">
           <div>
-            <h2>运行概览</h2>
+            <h2>运行概览 <InfoHint text="先看是否健康、下一个建议动作是什么，再决定是否要跳去记录页或执行维护。" /></h2>
             <p class="helper-text">先看是否健康、下一个建议动作是什么，再决定是否要跳去记录页或执行维护。</p>
           </div>
         </div>
@@ -79,24 +79,24 @@
       <article class="surface-card settings-shortcuts-card">
         <div class="panel-head compact-head">
           <div>
-            <h2>快捷入口</h2>
+            <h2>快捷入口 <InfoHint text="发现异常后，直接跳去最相关的工作区处理，不用来回切菜单。" /></h2>
             <p class="helper-text">发现异常后，直接跳去最相关的工作区处理，不用来回切菜单。</p>
           </div>
         </div>
 
         <div class="shortcut-stack">
-          <button class="shortcut-card" type="button" @click="goToRecords">
-            <strong>打开分析记录</strong>
+          <div class="shortcut-card" role="button" tabindex="0" @click="goToRecords" @keydown.enter="goToRecords" @keydown.space.prevent="goToRecords">
+            <strong>打开分析记录 <InfoHint :text="tasksShortcutCopy" /></strong>
             <span>{{ tasksShortcutCopy }}</span>
-          </button>
-          <button class="shortcut-card" type="button" @click="goToRecordsCompleted">
-            <strong>打开已完成记录</strong>
+          </div>
+          <div class="shortcut-card" role="button" tabindex="0" @click="goToRecordsCompleted" @keydown.enter="goToRecordsCompleted" @keydown.space.prevent="goToRecordsCompleted">
+            <strong>打开已完成记录 <InfoHint :text="reportsShortcutCopy" /></strong>
             <span>{{ reportsShortcutCopy }}</span>
-          </button>
-          <button class="shortcut-card" type="button" @click="goToCompare">
-            <strong>回到开始分析</strong>
+          </div>
+          <div class="shortcut-card" role="button" tabindex="0" @click="goToCompare" @keydown.enter="goToCompare" @keydown.space.prevent="goToCompare">
+            <strong>回到开始分析 <InfoHint :text="compareShortcutCopy" /></strong>
             <span>{{ compareShortcutCopy }}</span>
-          </button>
+          </div>
         </div>
       </article>
     </section>
@@ -105,7 +105,7 @@
       <article class="surface-card">
         <div class="panel-head compact-head">
           <div>
-            <h2>环境检查</h2>
+            <h2>环境检查 <InfoHint text="直接看关键依赖是否在线，包括运行目录、磁盘、模型、数据库和队列服务。" /></h2>
             <p class="helper-text">直接看关键依赖是否在线，包括运行目录、磁盘、模型、数据库和队列服务。</p>
           </div>
         </div>
@@ -129,7 +129,7 @@
       <article class="surface-card">
         <div class="panel-head compact-head">
           <div>
-            <h2>异常提示</h2>
+            <h2>异常提示 <InfoHint text="把原始检查结果翻译成更直接的风险说明和处理建议。" /></h2>
             <p class="helper-text">把原始检查结果翻译成更直接的风险说明和处理建议。</p>
           </div>
         </div>
@@ -160,7 +160,7 @@
       <article class="surface-card">
         <div class="panel-head compact-head">
           <div>
-            <h2>数据占用</h2>
+            <h2>数据占用 <InfoHint text="重点关注上传目录、输出目录和关键点缓存，避免长期使用后体积失控。" /></h2>
             <p class="helper-text">重点关注上传目录、输出目录和关键点缓存，避免长期使用后体积失控。</p>
           </div>
         </div>
@@ -177,7 +177,7 @@
       <article class="surface-card">
         <div class="panel-head compact-head">
           <div>
-            <h2>运行路径</h2>
+            <h2>运行路径 <InfoHint text="这些目录决定了素材、输出和模型实际落在哪里，排查问题时最常用。" /></h2>
             <p class="helper-text">这些目录决定了素材、输出和模型实际落在哪里，排查问题时最常用。</p>
           </div>
         </div>
@@ -194,14 +194,14 @@
     <section class="surface-card">
       <div class="panel-head compact-head">
         <div>
-          <h2>数据维护</h2>
+          <h2>数据维护 <InfoHint text="把最高频的维护动作保留在这里，适合定期瘦身、修复历史报告和清理调试产物。" /></h2>
           <p class="helper-text">把最高频的维护动作保留在这里，适合定期瘦身、修复历史报告和清理调试产物。</p>
         </div>
       </div>
 
       <div class="settings-maintenance-grid">
         <div class="list-item-card settings-maintenance-card">
-          <strong>重建历史报告</strong>
+          <strong>重建历史报告 <InfoHint text="重新扫描已落盘的分析结果，修复报告表里的分数、可信度和摘要信息。" /></strong>
           <span class="helper-text">重新扫描已落盘的分析结果，修复报告表里的分数、可信度和摘要信息。</span>
           <div class="settings-maintenance-foot">
             <span class="field-help">{{ rebuildHint }}</span>
@@ -212,7 +212,7 @@
         </div>
 
         <div class="list-item-card settings-maintenance-card">
-          <strong>裁剪旧输出</strong>
+          <strong>裁剪旧输出 <InfoHint text="只保留最近若干组分析输出，用来控制 outputs 目录的长期增长。" /></strong>
           <span class="helper-text">只保留最近若干组分析输出，用来控制 <code>outputs</code> 目录的长期增长。</span>
           <div class="settings-inline-field">
             <label class="field-label">保留组数</label>
@@ -227,7 +227,7 @@
         </div>
 
         <div class="list-item-card settings-maintenance-card">
-          <strong>清理调试产物</strong>
+          <strong>清理调试产物 <InfoHint text="删除调试目录和辅助图表，保留报告、时间轴和骨架视频等主要结果。" /></strong>
           <span class="helper-text">删除调试目录和辅助图表，保留报告、时间轴和骨架视频等主要结果。</span>
           <div class="settings-maintenance-foot">
             <span class="field-help">{{ cleanupHint }}</span>
@@ -262,12 +262,15 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
+import InfoHint from "../components/InfoHint.vue";
 import {
   cleanupDebugArtifacts,
+  getCachedSystemStatus,
   getSystemStatus,
   rebuildAnalysisReports,
   trimOutputPairs,
 } from "../api/pipelines";
+import { friendlyError } from "../utils/errors";
 import type { SystemActionResponse, SystemStatusResponse } from "../types/video";
 
 type CheckItem = {
@@ -592,23 +595,35 @@ function goToCompare() {
   void router.push("/compare");
 }
 
-async function loadStatus() {
-  loading.value = true;
+function applyStatus(nextStatus: SystemStatusResponse) {
+  status.value = nextStatus;
+  if ((nextStatus?.retain_output_pairs || 0) > 0) {
+    keepPairs.value = Number(nextStatus?.retain_output_pairs || 5);
+  }
+}
+
+async function fetchSystemStatus(force = false) {
+  return getSystemStatus({ force });
+}
+
+async function loadStatus(options?: { force?: boolean; quiet?: boolean }) {
+  const cachedStatus = getCachedSystemStatus();
+  if (cachedStatus && !options?.force) {
+    applyStatus(cachedStatus);
+  }
+  loading.value = !options?.quiet && (!cachedStatus || Boolean(options?.force));
   error.value = "";
   try {
-    status.value = await getSystemStatus();
-    if ((status.value?.retain_output_pairs || 0) > 0) {
-      keepPairs.value = Number(status.value?.retain_output_pairs || 5);
-    }
+    applyStatus(await fetchSystemStatus(Boolean(options?.force)));
   } catch (err: any) {
-    error.value = err?.response?.data?.detail ?? err?.message ?? loadErrorText;
+    error.value = friendlyError(err, loadErrorText);
   } finally {
     loading.value = false;
   }
 }
 
 async function refreshStatus() {
-  await loadStatus();
+  await loadStatus({ force: true });
 }
 
 async function runRebuildReports() {
@@ -629,12 +644,12 @@ async function runMaintenance(action: () => Promise<SystemActionResponse>) {
   actionResult.value = null;
   try {
     actionResult.value = await action();
-    await loadStatus();
+    await loadStatus({ force: true, quiet: true });
   } catch (err: any) {
     actionResult.value = {
       ok: false,
       action: "maintenance",
-      message: err?.response?.data?.detail ?? err?.message ?? maintenanceErrorText,
+      message: friendlyError(err, maintenanceErrorText),
       report_count: null,
       affected_count: null,
       freed_bytes: null,
@@ -666,7 +681,6 @@ onMounted(() => {
 }
 
 .health-hero,
-.shortcut-card,
 .settings-check-card,
 .settings-insight-card,
 .settings-maintenance-card {
@@ -779,17 +793,33 @@ onMounted(() => {
   color: var(--text);
   text-align: left;
   box-shadow: none;
+  cursor: pointer;
+  overflow: visible;
+  position: relative;
 }
 
-.shortcut-card:hover:not(:disabled) {
+.shortcut-card:hover,
+.shortcut-card:focus-visible {
   transform: translateY(-2px);
   box-shadow: var(--shadow-md);
+  outline: none;
 }
 
 .shortcut-card span {
   color: var(--muted);
   line-height: 1.6;
   font-weight: 500;
+}
+
+.shortcut-card > span {
+  display: none;
+}
+
+.shortcut-card strong {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: space-between;
 }
 
 .settings-card-grid,
@@ -881,5 +911,48 @@ onMounted(() => {
   .storage-card-grid {
     grid-template-columns: 1fr;
   }
+}
+
+.settings-page .page-subtitle,
+.settings-page .panel-head.compact-head .helper-text,
+.settings-page .settings-maintenance-card > .helper-text,
+.settings-page .settings-maintenance-foot .field-help {
+  display: none;
+}
+
+.settings-page h1,
+.settings-page .panel-head h2,
+.settings-page .settings-maintenance-card > strong {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.settings-page h1 :deep(.info-hint),
+.settings-page .panel-head h2 :deep(.info-hint),
+.settings-page .settings-maintenance-card > strong :deep(.info-hint),
+.settings-page .shortcut-card strong :deep(.info-hint) {
+  transform: translateY(1px);
+}
+
+.settings-page .settings-maintenance-card > strong {
+  justify-content: space-between;
+}
+
+.settings-page .surface-card:has(.info-hint:hover),
+.settings-page .surface-card:has(.info-hint:focus-within),
+.settings-page .shortcut-card:has(.info-hint:hover),
+.settings-page .shortcut-card:has(.info-hint:focus-within),
+.settings-page .settings-maintenance-card:has(.info-hint:hover),
+.settings-page .settings-maintenance-card:has(.info-hint:focus-within) {
+  overflow: visible;
+  z-index: 10000;
+}
+
+.settings-page :deep(.info-hint-popover) {
+  width: min(360px, calc(100vw - 64px));
+  max-width: calc(100vw - 64px);
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 </style>

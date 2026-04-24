@@ -260,6 +260,7 @@ import { absMediaUrl } from "../api/http";
 import { cancelPipeline, deletePipelineTask, getPipelineResultSummary, listPipelineTasks } from "../api/pipelines";
 import { focusDetailPanel } from "../utils/detailPanel";
 import { normalizedConfidenceSummary } from "../utils/confidence";
+import { friendlyError, runningTaskDeleteMessage } from "../utils/errors";
 import type { PipelineResultSummaryResponse, PipelineStatusType, PipelineTaskListItem } from "../types/video";
 
 const router = useRouter();
@@ -365,7 +366,7 @@ async function loadTasks(options?: { openFirst?: boolean; keepSelection?: boolea
       selectedTaskId.value = tasks.value[0].pipeline_id;
     }
   } catch (err: any) {
-    error.value = err?.response?.data?.detail ?? err?.message ?? "\u4efb\u52a1\u5217\u8868\u52a0\u8f7d\u5931\u8d25";
+    error.value = friendlyError(err, "\u4efb\u52a1\u5217\u8868\u52a0\u8f7d\u5931\u8d25");
   } finally {
     loading.value = false;
   }
@@ -398,7 +399,7 @@ async function openTask(pipelineId: string) {
     focusDetailPanel(detailPanelRef, { forceScroll: true });
   } catch (err: any) {
     detail.value = null;
-    detailError.value = err?.response?.data?.detail ?? err?.message ?? "\u4efb\u52a1\u8be6\u60c5\u52a0\u8f7d\u5931\u8d25";
+    detailError.value = friendlyError(err, "\u4efb\u52a1\u8be6\u60c5\u52a0\u8f7d\u5931\u8d25");
   } finally {
     detailLoading.value = false;
   }
@@ -428,7 +429,7 @@ async function cancelSelectedTask() {
       item.pipeline_id === selectedTaskId.value ? { ...item, ...status } : item,
     );
   } catch (err: any) {
-    detailError.value = err?.response?.data?.detail ?? err?.message ?? "\u53d6\u6d88\u4efb\u52a1\u5931\u8d25";
+    detailError.value = friendlyError(err, "\u53d6\u6d88\u4efb\u52a1\u5931\u8d25");
   } finally {
     cancelingTask.value = false;
   }
@@ -437,7 +438,11 @@ async function cancelSelectedTask() {
 async function deleteSelectedTask() {
   const pipelineId = selectedTaskId.value;
   const currentTask = selectedTask.value;
-  if (!pipelineId || !currentTask || !canDeleteSelectedTask.value) return;
+  if (!pipelineId || !currentTask) return;
+  if (!canDeleteSelectedTask.value) {
+    detailError.value = runningTaskDeleteMessage();
+    return;
+  }
 
   const confirmed = window.confirm(`确认删除任务“${currentTask.pair_name}”吗？删除后将从任务中心和报告中心移除。`);
   if (!confirmed) return;
@@ -458,7 +463,7 @@ async function deleteSelectedTask() {
 
     await openTask(nextTask.pipeline_id);
   } catch (err: any) {
-    detailError.value = err?.response?.data?.detail ?? err?.message ?? "\u5220\u9664\u4efb\u52a1\u5931\u8d25";
+    detailError.value = friendlyError(err, "\u5220\u9664\u4efb\u52a1\u5931\u8d25");
   } finally {
     deletingTask.value = false;
   }

@@ -3,6 +3,14 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from app.services.record_issues import (
+    fallback_beginner_summary,
+    fallback_confidence_summary,
+    fallback_overall_advice,
+    fallback_teaching_summary,
+    normalized_confidence_summary,
+    safe_text,
+)
 from app.settings import settings
 
 
@@ -182,27 +190,22 @@ def derive_confidence_from_report(report: dict[str, Any], summary: dict[str, Any
     max_gap = max(teacher_gap or 0.0, user_gap or 0.0)
     notes: list[str] = []
     if max_invalid >= 0.35:
-        notes.append("???????")
+        notes.append("关键点缺失较多")
     elif max_invalid >= 0.22:
-        notes.append("?????????")
+        notes.append("关键点跟踪不够稳定")
     if max_gap >= 0.10:
-        notes.append("????????")
+        notes.append("存在连续遮挡片段")
     if fallback_linear or jump_rate >= 0.35:
-        notes.append("?????????")
+        notes.append("动作对齐波动较大")
     if tempo_stability < 0.6:
-        notes.append("?????????")
+        notes.append("节奏估计稳定性不足")
 
-    if level == "high":
-        summary_text = "??????????????????????"
-    elif level == "medium":
-        summary_text = "??????????????????????"
-    else:
-        summary_text = "????????????????????????????"
+    summary_text = fallback_confidence_summary(level or score)
 
     if notes:
-        summary_text = f"{summary_text} ?????{'?'.join(notes[:3])}?"
+        summary_text = f"{summary_text} 需留意：{'、'.join(notes[:3])}。"
 
-    if summary.get("confidence_summary"):
+    if safe_text(summary.get("confidence_summary")):
         summary_text = str(summary.get("confidence_summary"))
     if summary.get("confidence_level"):
         level = str(summary.get("confidence_level"))
@@ -210,6 +213,43 @@ def derive_confidence_from_report(report: dict[str, Any], summary: dict[str, Any
         score = as_db_float(summary.get("confidence_score")) or score
 
     return score, level, summary_text
+
+
+def _issue_count(report: dict[str, Any]) -> int:
+    markers = report.get("markers")
+    confidence = report.get("confidence")
+    confidence_issues = confidence.get("issues") if isinstance(confidence, dict) else None
+    tempo_segments = report.get("tempo_segments")
+    return sum(
+        len(value)
+        for value in (markers, confidence_issues, tempo_segments)
+        if isinstance(value, list)
+    )
+
+
+def normalize_report_response_fields(payload: dict[str, Any]) -> dict[str, Any]:
+    report = payload.get("report")
+    if not isinstance(report, dict):
+        report = payload.get("report_payload")
+    report = report if isinstance(report, dict) else {}
+    confidence = report.get("confidence") if isinstance(report.get("confidence"), dict) else {}
+    score_total = payload.get("score_total")
+    issue_count = _issue_count(report)
+
+    payload["overall_advice"] = safe_text(payload.get("overall_advice"), fallback_overall_advice(score_total))
+    payload["confidence_summary"] = normalized_confidence_summary(
+        confidence,
+        payload.get("confidence_summary") or fallback_confidence_summary(payload.get("confidence_level") or payload.get("confidence_score")),
+    )
+    payload["beginner_summary"] = safe_text(
+        payload.get("beginner_summary"),
+        fallback_beginner_summary(score_total, issue_count),
+    )
+    payload["teaching_summary"] = safe_text(
+        payload.get("teaching_summary"),
+        fallback_teaching_summary(score_total, issue_count),
+    )
+    return payload
 
 
 def task_report_score(task: dict[str, Any]) -> float | None:
@@ -252,6 +292,12 @@ def task_report_row(task: dict[str, Any]) -> dict[str, Any] | None:
         confidence_score = as_db_float(summary.get("confidence_score"))
     derived_score, derived_level, derived_summary = derive_confidence_from_report(report, summary)
     confidence_score = confidence_score if confidence_score is not None else derived_score
+    score_total = task_report_score(task) or as_db_float(summary.get("score_total"))
+    issue_count = _issue_count(report)
+    confidence_summary = normalized_confidence_summary(
+        confidence,
+        str(summary.get("confidence_summary", "")).strip() or derived_summary,
+    )
 
     return {
         "pipeline_id": str(task.get("pipeline_id", "")).strip(),
@@ -264,15 +310,15 @@ def task_report_row(task: dict[str, Any]) -> dict[str, Any] | None:
         "queued_at": str(task.get("queued_at", "")).strip() or None,
         "started_at": str(task.get("started_at", "")).strip() or None,
         "finished_at": str(task.get("finished_at", "")).strip() or None,
-        "score_total": task_report_score(task) or as_db_float(summary.get("score_total")),
+        "score_total": score_total,
         "score_pose": as_db_float(scores.get("score_pose")) or as_db_float(summary.get("score_pose")),
         "score_tempo": as_db_float(scores.get("score_tempo")) or as_db_float(summary.get("score_tempo")),
         "confidence_score": confidence_score,
         "confidence_level": str(confidence.get("level", "")).strip() or str(summary.get("confidence_level", "")).strip() or derived_level or confidence_level_from_score(confidence_score),
-        "overall_advice": str(recommendations.get("overall", "")).strip() or None,
-        "confidence_summary": str(confidence.get("summary", "")).strip() or str(summary.get("confidence_summary", "")).strip() or derived_summary,
-        "beginner_summary": str(beginner_report.get("summary", "")).strip() or None,
-        "teaching_summary": str(teaching_report.get("summary", "")).strip() or None,
+        "overall_advice": safe_text(recommendations.get("overall"), fallback_overall_advice(score_total)),
+        "confidence_summary": confidence_summary,
+        "beginner_summary": safe_text(beginner_report.get("summary"), fallback_beginner_summary(score_total, issue_count)),
+        "teaching_summary": safe_text(teaching_report.get("summary"), fallback_teaching_summary(score_total, issue_count)),
         "top_joints": _json_ready_list(report.get("top_joints")),
         "files": files,
         "report_payload": report_without_frame_analysis(report),
@@ -280,7 +326,7 @@ def task_report_row(task: dict[str, Any]) -> dict[str, Any] | None:
 
 
 def parse_analysis_report_detail_row(row: tuple[Any, ...]) -> dict[str, Any]:
-    return {
+    payload = {
         "pipeline_id": row[0],
         "pair_name": row[1],
         "teacher_video_id": row[2],
@@ -306,10 +352,11 @@ def parse_analysis_report_detail_row(row: tuple[Any, ...]) -> dict[str, Any]:
         "created_at": row[22].isoformat() if row[22] is not None else None,
         "updated_at": row[23].isoformat() if row[23] is not None else None,
     }
+    return normalize_report_response_fields(payload)
 
 
 def parse_analysis_report_summary_row(row: tuple[Any, ...]) -> dict[str, Any]:
-    return {
+    payload = {
         "pipeline_id": row[0],
         "pair_name": row[1],
         "teacher_video_id": row[2],
@@ -333,6 +380,7 @@ def parse_analysis_report_summary_row(row: tuple[Any, ...]) -> dict[str, Any]:
         "files": json.loads(row[20]) if row[20] else {},
         "updated_at": row[21].isoformat() if row[21] is not None else None,
     }
+    return normalize_report_response_fields(payload)
 
 
 def parse_frame_analysis_range_rows(rows: list[tuple[Any, ...]]) -> list[dict[str, Any]]:

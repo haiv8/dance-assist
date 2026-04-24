@@ -10,6 +10,13 @@ $PythonExe = Join-Path $ProjectRoot ".venv\Scripts\python.exe"
 $FrontendDir = Join-Path $ProjectRoot "frontend"
 $DistRoot = Join-Path $ProjectRoot "dist-desktop"
 $BuildRoot = Join-Path $ProjectRoot "build\pyinstaller"
+$IconPath = Join-Path $ProjectRoot "assets\brand\dance-assist.ico"
+$PythonRoot = Split-Path (Split-Path $PythonExe -Parent) -Parent
+$PythonBaseRoot = (& $PythonExe -c "import sys; print(sys.base_prefix)") | Select-Object -First 1
+$LibraryBinCandidates = @(
+    (Join-Path $PythonRoot "Library\bin"),
+    (Join-Path $PythonBaseRoot "Library\bin")
+) | Select-Object -Unique
 
 if (-not (Test-Path $PythonExe)) {
     throw "Python not found: $PythonExe"
@@ -17,6 +24,32 @@ if (-not (Test-Path $PythonExe)) {
 
 if (-not (Test-Path (Join-Path $FrontendDir "package.json"))) {
     throw "frontend/package.json not found: $FrontendDir"
+}
+
+if (-not (Test-Path $IconPath)) {
+    throw "desktop icon not found: $IconPath"
+}
+
+$binaryArgs = @()
+$condaDllNames = @(
+    "libssl-3-x64.dll",
+    "libcrypto-3-x64.dll",
+    "zlib.dll",
+    "zlib1.dll",
+    "libffi-8.dll",
+    "ffi-8.dll",
+    "libbz2.dll",
+    "liblzma.dll"
+)
+foreach ($libraryBin in $LibraryBinCandidates) {
+    if (Test-Path $libraryBin) {
+        foreach ($dllName in $condaDllNames) {
+            $dllPath = Join-Path $libraryBin $dllName
+            if (Test-Path $dllPath) {
+                $binaryArgs += @("--add-binary", "$dllPath;.")
+            }
+        }
+    }
 }
 
 Write-Host "[1/4] Build frontend dist..."
@@ -80,6 +113,8 @@ $pyArgs = @(
     "--clean",
     "--onedir",
     "--name", "dance-assist",
+    "--icon", $IconPath,
+    $binaryArgs,
     "--distpath", $DistRoot,
     "--workpath", $BuildRoot,
     "--specpath", $BuildRoot,

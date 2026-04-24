@@ -90,6 +90,7 @@
 
     <section class="surface-card records-workspace">
       <div class="records-table-head" v-if="activeTab !== 'issues'">
+        <span></span>
         <span>记录</span>
         <span>状态</span>
         <span>得分 / 可信度</span>
@@ -97,10 +98,29 @@
       </div>
 
       <div class="records-table-head issue-table-head" v-else>
+        <span></span>
         <span>问题片段</span>
         <span>优先级</span>
         <span>时间点</span>
         <span>所属记录</span>
+      </div>
+
+      <div v-if="visiblePipelineIds.length" class="bulk-action-bar">
+        <label class="bulk-select">
+          <input
+            type="checkbox"
+            :checked="allVisibleSelected"
+            :indeterminate.prop="someVisibleSelected && !allVisibleSelected"
+            @change="toggleSelectAllVisible"
+          />
+          <span>{{ selectedVisibleDeletablePipelineIds.length ? `已选 ${selectedVisibleDeletablePipelineIds.length} 条可删除记录` : "多选记录" }}</span>
+        </label>
+        <div class="action-row">
+          <button class="secondary-button" type="button" :disabled="!selectedPipelineIds.size || bulkDeleting" @click="clearSelection">取消选择</button>
+          <button class="ghost-button danger-button" type="button" :disabled="!selectedVisibleDeletablePipelineIds.length || bulkDeleting" @click="deleteSelectedPipelines">
+            {{ bulkDeleting ? "批量删除中..." : "删除所选" }}
+          </button>
+        </div>
       </div>
 
       <div v-if="error" class="feedback-inline">{{ error }}</div>
@@ -122,12 +142,21 @@
 
       <div v-else-if="activeTab === 'issues'" class="records-list dense-list">
         <div v-for="item in filteredIssues" :key="item.id" class="record-shell">
-          <button
-            type="button"
-            class="record-row dense-row issue-dense-row"
-            :class="{ active: selectedIssueId === item.id }"
-            @click="toggleIssue(item.id)"
-          >
+          <div class="record-row-wrap">
+            <label class="row-check" :class="{ disabled: !canDeletePipelineId(item.pipelineId) }" @click.stop>
+              <input
+                type="checkbox"
+                :checked="selectedPipelineIds.has(item.pipelineId)"
+                :disabled="!canDeletePipelineId(item.pipelineId) || bulkDeleting || deletingId === item.pipelineId"
+                @change="togglePipelineSelection(item.pipelineId)"
+              />
+            </label>
+            <button
+              type="button"
+              class="record-row dense-row issue-dense-row"
+              :class="{ active: selectedIssueId === item.id }"
+              @click="toggleIssue(item.id)"
+            >
             <div class="dense-col primary-col">
               <strong>{{ issueTypeText(item.type) }}</strong>
               <p class="helper-text">{{ item.summary }}</p>
@@ -140,7 +169,8 @@
               <strong class="dense-name">{{ item.pairName }}</strong>
               <span class="helper-text">{{ formatDate(item.finishedAt) }}</span>
             </div>
-          </button>
+            </button>
+          </div>
 
           <div
             v-if="selectedIssueId === item.id"
@@ -155,8 +185,8 @@
               <div class="action-row">
                 <button class="secondary-button" type="button" @click="openIssueRecord(item)">打开所属记录</button>
                 <button class="secondary-button" type="button" @click="jumpIssueToCompare(item)">定位到动作分析</button>
-                <button class="ghost-button danger-button" type="button" :disabled="deletingId === item.pipelineId" @click="deletePipeline(item.pipelineId)">
-                  {{ deletingId === item.pipelineId ? "删除中..." : "删除记录" }}
+                <button class="ghost-button danger-button" type="button" :disabled="!canDeletePipelineId(item.pipelineId) || deletingId === item.pipelineId" @click="deletePipeline(item.pipelineId)">
+                  {{ deletingId === item.pipelineId ? "删除中..." : canDeletePipelineId(item.pipelineId) ? "删除记录" : "运行中不可删" }}
                 </button>
               </div>
             </div>
@@ -182,12 +212,21 @@
 
       <div v-else class="records-list dense-list">
         <div v-for="item in filteredRecords" :key="item.pipeline_id" class="record-shell">
-          <button
-            type="button"
-            class="record-row dense-row"
-            :class="{ active: selectedRecordId === item.pipeline_id }"
-            @click="toggleRecord(item.pipeline_id)"
-          >
+          <div class="record-row-wrap">
+            <label class="row-check" :class="{ disabled: !canDeletePipelineId(item.pipeline_id) }" @click.stop>
+              <input
+                type="checkbox"
+                :checked="selectedPipelineIds.has(item.pipeline_id)"
+                :disabled="!canDeletePipelineId(item.pipeline_id) || bulkDeleting || deletingId === item.pipeline_id"
+                @change="togglePipelineSelection(item.pipeline_id)"
+              />
+            </label>
+            <button
+              type="button"
+              class="record-row dense-row"
+              :class="{ active: selectedRecordId === item.pipeline_id }"
+              @click="toggleRecord(item.pipeline_id)"
+            >
             <div class="dense-col primary-col">
               <strong>{{ item.pair_name || item.pipeline_id }}</strong>
               <p class="helper-text">{{ recordLead(item) }}</p>
@@ -204,7 +243,8 @@
               <strong class="mono-col">{{ formatDate(item.updated_at || item.finished_at || item.started_at || item.queued_at) }}</strong>
               <span class="helper-text">{{ item.error_type ? `异常：${item.error_type}` : `执行器：${item.executor || "--"}` }}</span>
             </div>
-          </button>
+            </button>
+          </div>
 
           <div
             v-if="selectedRecordId === item.pipeline_id"
@@ -225,6 +265,9 @@
                 </button>
                 <button class="secondary-button" :disabled="copyingId === item.pipeline_id" @click="copyPipelineId(item.pipeline_id)">
                   {{ copyingId === item.pipeline_id ? "已复制" : "复制任务 ID" }}
+                </button>
+                <button class="secondary-button" :disabled="aiCoachLoading || item.status !== 'done'" @click="loadDetailAiCoach(item.pipeline_id)">
+                  {{ aiCoachLoading ? "AI生成中..." : "AI解读" }}
                 </button>
                 <button class="secondary-button" :disabled="!canOpenSelectedInCompare" @click="openSelectedInCompare">打开动作分析</button>
               </div>
@@ -257,6 +300,31 @@
                 <div class="metric-chip"><strong>可信度</strong><span>{{ detailConfidenceText }}</span></div>
                 <div class="metric-chip"><strong>开始时间</strong><span>{{ formatDate(detail.started_at || detail.queued_at) }}</span></div>
                 <div class="metric-chip"><strong>完成时间</strong><span>{{ formatDate(detail.finished_at || detail.updated_at) }}</span></div>
+              </div>
+
+              <div class="list-item-card ai-record-card" v-if="aiCoach || aiCoachError">
+                <div class="record-card-head">
+                  <strong>AI助教解读</strong>
+                  <span v-if="aiCoach" class="tag neutral">{{ aiCoachSourceText }}</span>
+                </div>
+                <span v-if="aiCoachError" class="helper-text">{{ aiCoachError }}</span>
+                <template v-if="aiCoach">
+                  <span class="helper-text">{{ aiCoach.summary }}</span>
+                  <div class="issue-chip-list" v-if="aiCoach.priority_issues.length">
+                    <button
+                      v-for="issue in aiCoach.priority_issues.slice(0, 3)"
+                      :key="`${issue.title}_${issue.time_hint}`"
+                      type="button"
+                      class="issue-chip"
+                    >
+                      {{ issue.time_hint ? `${issue.time_hint} · ` : "" }}{{ issue.title }}
+                    </button>
+                  </div>
+                  <span class="helper-text" v-if="aiCoach.practice_plan[0]">
+                    建议先练：{{ aiCoach.practice_plan[0].title }}，{{ aiCoach.practice_plan[0].duration_min }} 分钟。
+                  </span>
+                  <span class="helper-text" v-if="aiCoach.setup_hint">{{ aiCoach.setup_hint }}</span>
+                </template>
               </div>
 
               <div class="detail-columns">
@@ -320,32 +388,28 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import { getAiCoachReport } from "../api/ai";
+import { getRecordsWorkspace } from "../api/records";
 import { absMediaUrl } from "../api/http";
 import {
   cancelPipeline,
   deletePipelineTask,
-  getAnalysisReport,
   getPipelineResultSummary,
-  listAnalysisReports,
-  listPipelineTasks,
 } from "../api/pipelines";
-import { normalizedConfidenceIssues, normalizedConfidenceSummary } from "../utils/confidence";
+import { normalizedConfidenceSummary } from "../utils/confidence";
 import { focusDetailPanel } from "../utils/detailPanel";
+import { friendlyError, runningTaskDeleteMessage } from "../utils/errors";
 import type {
-  AnalysisReportDetailResponse,
-  AnalysisReportItem,
+  AiCoachResponse,
   PipelineResultSummaryResponse,
   PipelineStatusType,
-  PipelineTaskListItem,
+  RecordWorkspaceIssueItem,
+  RecordWorkspaceItem,
 } from "../types/video";
 
 type WorkspaceTab = "all" | "running" | "completed" | "issues";
 
-type RecordItem = PipelineTaskListItem & Partial<AnalysisReportItem> & {
-  hasReport: boolean;
-};
-
-type IssueSeverity = "high" | "medium" | "low";
+type RecordItem = RecordWorkspaceItem;
 
 type IssueReplayItem = {
   id: string;
@@ -354,11 +418,11 @@ type IssueReplayItem = {
   teacherVideoId?: string | null;
   userVideoId?: string | null;
   type: string;
-  severity: IssueSeverity;
+  severity: "high" | "medium" | "low";
   sec: number;
   frame?: number | null;
   summary: string;
-  action?: string;
+  action?: string | null;
   finishedAt?: string | null;
   scoreTotal?: number | null;
   confidenceScore?: number | null;
@@ -393,17 +457,20 @@ const selectedIssueId = ref("");
 const detail = ref<PipelineResultSummaryResponse | null>(null);
 const detailLoading = ref(false);
 const detailError = ref("");
+const aiCoach = ref<AiCoachResponse | null>(null);
+const aiCoachLoading = ref(false);
+const aiCoachError = ref("");
 const detailPanelRef = ref<HTMLElement | null>(null);
 const issueMap = ref<Record<string, IssueReplayItem[]>>({});
-const issueSourceKey = ref("");
 
 const copyingId = ref("");
 const deletingId = ref("");
 const cancelingId = ref("");
+const bulkDeleting = ref(false);
+const selectedPipelineIds = ref<Set<string>>(new Set());
 
 const runningCount = computed(() => records.value.filter((item) => item.status === "pending" || item.status === "running").length);
 const completedCount = computed(() => records.value.filter((item) => item.status === "done").length);
-const completedRecords = computed(() => records.value.filter((item) => item.status === "done"));
 
 const filteredRecords = computed(() => {
   const keyword = search.value.trim().toLowerCase();
@@ -437,6 +504,24 @@ const filteredIssues = computed(() => {
   });
 });
 
+const visiblePipelineIds = computed(() => {
+  const ids = activeTab.value === "issues"
+    ? filteredIssues.value.map((item) => item.pipelineId)
+    : filteredRecords.value.map((item) => item.pipeline_id);
+  return Array.from(new Set(ids));
+});
+
+const visibleDeletablePipelineIds = computed(() => visiblePipelineIds.value.filter((pipelineId) => canDeletePipelineId(pipelineId)));
+const selectedVisibleDeletablePipelineIds = computed(() =>
+  visibleDeletablePipelineIds.value.filter((pipelineId) => selectedPipelineIds.value.has(pipelineId)),
+);
+const allVisibleSelected = computed(() =>
+  Boolean(visibleDeletablePipelineIds.value.length && visibleDeletablePipelineIds.value.every((pipelineId) => selectedPipelineIds.value.has(pipelineId))),
+);
+const someVisibleSelected = computed(() =>
+  visibleDeletablePipelineIds.value.some((pipelineId) => selectedPipelineIds.value.has(pipelineId)),
+);
+
 const selectedRecord = computed(() => records.value.find((item) => item.pipeline_id === selectedRecordId.value) ?? null);
 const selectedIssue = computed(() => filteredIssues.value.find((item) => item.id === selectedIssueId.value) ?? null);
 const canCancelSelectedRecord = computed(() => {
@@ -447,11 +532,56 @@ const canDeleteSelectedRecord = computed(() => {
   const item = detail.value ?? selectedRecord.value;
   return Boolean(item && item.status !== "pending" && item.status !== "running");
 });
+
+function isRunningTaskStatus(status?: string | null) {
+  return status === "pending" || status === "running";
+}
+
+function canDeletePipelineId(pipelineId: string) {
+  const item = records.value.find((record) => record.pipeline_id === pipelineId);
+  return !item || !isRunningTaskStatus(item.status);
+}
+
+function setSelectedPipelineIds(nextIds: Iterable<string>) {
+  selectedPipelineIds.value = new Set(nextIds);
+}
+
+function clearSelection() {
+  setSelectedPipelineIds([]);
+}
+
+function togglePipelineSelection(pipelineId: string) {
+  if (!canDeletePipelineId(pipelineId) || bulkDeleting.value) return;
+  const next = new Set(selectedPipelineIds.value);
+  if (next.has(pipelineId)) {
+    next.delete(pipelineId);
+  } else {
+    next.add(pipelineId);
+  }
+  setSelectedPipelineIds(next);
+}
+
+function toggleSelectAllVisible() {
+  const next = new Set(selectedPipelineIds.value);
+  if (allVisibleSelected.value) {
+    for (const pipelineId of visibleDeletablePipelineIds.value) next.delete(pipelineId);
+  } else {
+    for (const pipelineId of visibleDeletablePipelineIds.value) next.add(pipelineId);
+  }
+  setSelectedPipelineIds(next);
+}
+
 const canOpenSelectedInCompare = computed(() => Boolean(selectedRecord.value?.teacher_video_id && selectedRecord.value?.user_video_id));
 const detailConfidenceText = computed(() => confidenceText(detail.value?.report?.confidence?.score ?? detail.value?.confidence_score));
 const detailConfidenceSummaryText = computed(() =>
   normalizedConfidenceSummary(detail.value?.report?.confidence, detail.value?.report?.confidence?.summary || detail.value?.confidence_summary),
 );
+const aiCoachSourceText = computed(() => {
+  if (!aiCoach.value) return "";
+  if (aiCoach.value.generated_by === "aliyun") return aiCoach.value.model || "阿里云百炼";
+  if (aiCoach.value.generated_by === "openai") return aiCoach.value.model || "OpenAI";
+  return "本地兜底";
+});
 const topJointSummary = computed(() => {
   const joints = detail.value?.report?.top_joints ?? detail.value?.top_joints;
   if (!Array.isArray(joints) || !joints.length) return "";
@@ -479,7 +609,7 @@ const detailLinks = computed<DetailLinkItem[]>(() => {
   ];
   return links.filter((item) => item.url).map((item) => ({ label: item.label, url: absMediaUrl(item.url) }));
 });
-const detailIssues = computed(() => (detail.value ? extractIssues(detail.value) : []));
+const detailIssues = computed<IssueReplayItem[]>(() => (Array.isArray(detail.value?.issues) ? mapIssueItems(detail.value?.issues || []) : []));
 
 function parseTab(value: unknown): WorkspaceTab {
   if (value === "running" || value === "completed" || value === "issues" || value === "all") return value;
@@ -504,66 +634,50 @@ async function refreshWorkspace() {
   await loadWorkspace();
 }
 
+function mapIssueItems(items: RecordWorkspaceIssueItem[]): IssueReplayItem[] {
+  return items.map((item) => ({
+    id: item.id,
+    pipelineId: item.pipeline_id,
+    pairName: item.pair_name,
+    teacherVideoId: item.teacher_video_id,
+    userVideoId: item.user_video_id,
+    type: item.type,
+    severity: item.severity,
+    sec: item.sec,
+    frame: item.frame,
+    summary: item.summary,
+    action: item.action,
+    finishedAt: item.finished_at,
+    scoreTotal: item.score_total,
+    confidenceScore: item.confidence_score,
+  }));
+}
+
+function mapWorkspaceIssues(items: RecordWorkspaceIssueItem[]): Record<string, IssueReplayItem[]> {
+  const nextMap: Record<string, IssueReplayItem[]> = {};
+  for (const mapped of mapIssueItems(items)) {
+    if (!nextMap[mapped.pipelineId]) {
+      nextMap[mapped.pipelineId] = [];
+    }
+    nextMap[mapped.pipelineId].push(mapped);
+  }
+  return nextMap;
+}
+
 async function loadWorkspace() {
   loading.value = true;
+  issueLoading.value = true;
   error.value = "";
   try {
-    const [taskData, reportData] = await Promise.all([
-      listPipelineTasks({ limit: 100 }),
-      listAnalysisReports({ limit: 100 }),
-    ]);
-
-    const taskMap = new Map(taskData.items.map((item) => [item.pipeline_id, item]));
-    const reportMap = new Map(reportData.items.map((item) => [item.pipeline_id, item]));
-    const ids = new Set<string>([...taskMap.keys(), ...reportMap.keys()]);
-
-    const merged = Array.from(ids).map<RecordItem>((pipelineId) => {
-      const task = taskMap.get(pipelineId);
-      const report = reportMap.get(pipelineId);
-      return {
-        pipeline_id: pipelineId,
-        pair_name: task?.pair_name || report?.pair_name || pipelineId,
-        status: task?.status || report?.status || "done",
-        stage: task?.stage || report?.stage || null,
-        progress: task?.progress ?? null,
-        message: task?.message || null,
-        teacher_video_id: task?.teacher_video_id || report?.teacher_video_id || null,
-        user_video_id: task?.user_video_id || report?.user_video_id || null,
-        executor: task?.executor || report?.executor || null,
-        attempt_count: task?.attempt_count ?? null,
-        retry_count: task?.retry_count ?? null,
-        error_type: task?.error_type ?? null,
-        queued_at: task?.queued_at || report?.queued_at || null,
-        started_at: task?.started_at || report?.started_at || null,
-        finished_at: task?.finished_at || report?.finished_at || null,
-        updated_at: task?.updated_at || report?.updated_at || null,
-        score_total: task?.score_total ?? report?.score_total ?? null,
-        confidence_score: task?.confidence_score ?? report?.confidence_score ?? null,
-        cancel_requested: task?.cancel_requested ?? null,
-        cancel_requested_at: task?.cancel_requested_at ?? null,
-        timeout_sec: task?.timeout_sec ?? null,
-        timeout_at: task?.timeout_at ?? null,
-        score_pose: report?.score_pose ?? null,
-        score_tempo: report?.score_tempo ?? null,
-        confidence_level: report?.confidence_level ?? null,
-        overall_advice: report?.overall_advice ?? null,
-        confidence_summary: report?.confidence_summary ?? null,
-        beginner_summary: report?.beginner_summary ?? null,
-        teaching_summary: report?.teaching_summary ?? null,
-        top_joints: report?.top_joints ?? [],
-        files: report?.files ?? null,
-        hasReport: Boolean(report),
-      };
-    });
-
-    merged.sort((a, b) => latestTime(b).localeCompare(latestTime(a)));
-    records.value = merged;
-
+    const workspace = await getRecordsWorkspace(100);
+    records.value = workspace.items;
+    issueMap.value = mapWorkspaceIssues(workspace.issues);
     await hydrateSelectionFromRoute();
   } catch (err: any) {
-    error.value = err?.response?.data?.detail ?? err?.message ?? "记录中心加载失败";
+    error.value = friendlyError(err, "记录中心加载失败");
   } finally {
     loading.value = false;
+    issueLoading.value = false;
   }
 }
 
@@ -575,7 +689,6 @@ async function hydrateSelectionFromRoute() {
   const sec = Number(routeQueryString(route.query.sec));
 
   if (tab === "issues") {
-    await ensureIssueMapLoaded();
     if (pipelineId) {
       const hit = filteredIssues.value.find((item) => item.pipelineId === pipelineId && (!Number.isFinite(sec) || Math.abs(item.sec - sec) < 0.11));
       if (hit) {
@@ -590,50 +703,19 @@ async function hydrateSelectionFromRoute() {
   }
 }
 
-async function ensureIssueMapLoaded() {
-  const sourceKey = completedRecords.value.map((item) => item.pipeline_id).join(",");
-  if (!sourceKey) {
-    issueMap.value = {};
-    issueSourceKey.value = "";
-    return;
-  }
-  if (issueLoading.value || issueSourceKey.value === sourceKey) return;
-
-  issueLoading.value = true;
-  try {
-    const details = await Promise.all(
-      completedRecords.value.map(async (item) => {
-        try {
-          return await getAnalysisReport(item.pipeline_id);
-        } catch {
-          return null;
-        }
-      }),
-    );
-
-    const nextMap: Record<string, IssueReplayItem[]> = {};
-    for (const detailItem of details) {
-      if (!detailItem) continue;
-      nextMap[detailItem.pipeline_id] = extractIssues(detailItem);
-    }
-    issueMap.value = nextMap;
-    issueSourceKey.value = sourceKey;
-  } finally {
-    issueLoading.value = false;
-  }
-}
-
 async function openRecord(pipelineId: string) {
   selectedRecordId.value = pipelineId;
   selectedIssueId.value = "";
   detailLoading.value = true;
   detailError.value = "";
+  aiCoach.value = null;
+  aiCoachError.value = "";
   try {
     detail.value = await getPipelineResultSummary(pipelineId);
     focusDetailPanel(detailPanelRef, { forceScroll: true });
   } catch (err: any) {
     detail.value = null;
-    detailError.value = err?.response?.data?.detail ?? err?.message ?? "记录详情加载失败";
+    detailError.value = friendlyError(err, "记录详情加载失败");
   } finally {
     detailLoading.value = false;
   }
@@ -643,6 +725,8 @@ function closeRecordDetail() {
   selectedRecordId.value = "";
   detail.value = null;
   detailError.value = "";
+  aiCoach.value = null;
+  aiCoachError.value = "";
 }
 
 async function toggleRecord(pipelineId: string) {
@@ -684,6 +768,19 @@ async function copyPipelineId(pipelineId: string) {
   }
 }
 
+async function loadDetailAiCoach(pipelineId: string) {
+  if (!pipelineId) return;
+  aiCoachLoading.value = true;
+  aiCoachError.value = "";
+  try {
+    aiCoach.value = await getAiCoachReport(pipelineId);
+  } catch (err: any) {
+    aiCoachError.value = friendlyError(err, "AI解读生成失败");
+  } finally {
+    aiCoachLoading.value = false;
+  }
+}
+
 async function cancelSelectedRecord() {
   const pipelineId = selectedRecordId.value;
   if (!pipelineId || !canCancelSelectedRecord.value) return;
@@ -695,7 +792,7 @@ async function cancelSelectedRecord() {
     records.value = records.value.map((item) => (item.pipeline_id === pipelineId ? { ...item, ...status } : item));
     detail.value = detail.value ? { ...detail.value, ...status } : detail.value;
   } catch (err: any) {
-    detailError.value = err?.response?.data?.detail ?? err?.message ?? "取消任务失败";
+    detailError.value = friendlyError(err, "取消任务失败");
   } finally {
     cancelingId.value = "";
   }
@@ -703,6 +800,12 @@ async function cancelSelectedRecord() {
 
 async function deletePipeline(pipelineId: string) {
   const record = records.value.find((item) => item.pipeline_id === pipelineId);
+  if (record && isRunningTaskStatus(record.status)) {
+    error.value = runningTaskDeleteMessage();
+    detailError.value = runningTaskDeleteMessage();
+    return;
+  }
+
   const label = record?.pair_name || pipelineId;
   const confirmed = window.confirm(`确认删除“${label}”吗？相关任务、报告和问题片段会一起移除。`);
   if (!confirmed) return;
@@ -714,12 +817,57 @@ async function deletePipeline(pipelineId: string) {
     const nextMap = { ...issueMap.value };
     delete nextMap[pipelineId];
     issueMap.value = nextMap;
+    const nextSelection = new Set(selectedPipelineIds.value);
+    nextSelection.delete(pipelineId);
+    setSelectedPipelineIds(nextSelection);
     if (selectedRecordId.value === pipelineId) closeRecordDetail();
     if (selectedIssue.value?.pipelineId === pipelineId) closeIssueDetail();
   } catch (err: any) {
-    error.value = err?.response?.data?.detail ?? err?.message ?? "删除记录失败";
+    error.value = friendlyError(err, "删除记录失败");
   } finally {
     deletingId.value = "";
+  }
+}
+
+async function deleteSelectedPipelines() {
+  const pipelineIds = selectedVisibleDeletablePipelineIds.value;
+  if (!pipelineIds.length || bulkDeleting.value) return;
+
+  const confirmed = window.confirm(`确认删除选中的 ${pipelineIds.length} 条记录吗？相关任务、报告和问题片段会一起移除。`);
+  if (!confirmed) return;
+
+  bulkDeleting.value = true;
+  error.value = "";
+  const failed: string[] = [];
+  try {
+    for (const pipelineId of pipelineIds) {
+      deletingId.value = pipelineId;
+      try {
+        await deletePipelineTask(pipelineId);
+        records.value = records.value.filter((item) => item.pipeline_id !== pipelineId);
+        const nextMap = { ...issueMap.value };
+        delete nextMap[pipelineId];
+        issueMap.value = nextMap;
+        if (selectedRecordId.value === pipelineId) closeRecordDetail();
+        if (selectedIssue.value?.pipelineId === pipelineId) closeIssueDetail();
+      } catch (err: any) {
+        failed.push(friendlyError(err, `删除 ${pipelineId} 失败`));
+      }
+    }
+  } finally {
+    deletingId.value = "";
+    bulkDeleting.value = false;
+    const remaining = new Set(selectedPipelineIds.value);
+    for (const pipelineId of pipelineIds) {
+      if (!failed.length || !records.value.some((item) => item.pipeline_id === pipelineId)) {
+        remaining.delete(pipelineId);
+      }
+    }
+    setSelectedPipelineIds(remaining);
+  }
+
+  if (failed.length) {
+    error.value = `有 ${failed.length} 条记录删除失败：${failed[0]}`;
   }
 }
 
@@ -774,87 +922,6 @@ function recordLead(item: Partial<RecordItem>) {
     normalizedConfidenceSummary(null, item.confidence_summary) ||
     "本条记录已完成，可展开查看摘要、输出文件和问题片段。"
   );
-}
-
-function extractIssues(report: Partial<AnalysisReportDetailResponse | PipelineResultSummaryResponse>): IssueReplayItem[] {
-  const result: IssueReplayItem[] = [];
-  const pairName = report.pair_name || report.pipeline_id || "未命名记录";
-  const markers = Array.isArray(report.report?.markers) ? report.report?.markers : [];
-
-  for (const marker of markers) {
-    const sec = Number((marker as any)?.sec);
-    if (!Number.isFinite(sec)) continue;
-    result.push({
-      id: `${report.pipeline_id}_marker_${(marker as any)?.frame ?? sec}_${(marker as any)?.type || "unknown"}`,
-      pipelineId: String(report.pipeline_id || ""),
-      pairName,
-      teacherVideoId: report.teacher_video_id,
-      userVideoId: report.user_video_id,
-      type: String((marker as any)?.type || "pose_error"),
-      severity: markerSeverity((marker as any)?.severity),
-      sec,
-      frame: Number((marker as any)?.frame),
-      summary: `${issueTypeText(String((marker as any)?.type || "pose_error"))}，${timeText(sec)}，${(marker as any)?.severity ? severityText(markerSeverity((marker as any)?.severity)) : "需要关注"}`,
-      action: "建议跳回动作分析页，结合双视频和时间轴对照这一段。",
-      finishedAt: report.finished_at || report.updated_at,
-      scoreTotal: report.score_total,
-      confidenceScore: report.confidence_score,
-    });
-  }
-
-  const tempoSegments = Array.isArray(report.report?.tempo_segments) ? report.report?.tempo_segments : [];
-  for (let index = 0; index < tempoSegments.length; index += 1) {
-    const segment = tempoSegments[index] as any;
-    const sec = Number(segment?.start_sec ?? segment?.sec ?? segment?.t0);
-    if (!Number.isFinite(sec)) continue;
-    result.push({
-      id: `${report.pipeline_id}_tempo_${index}`,
-      pipelineId: String(report.pipeline_id || ""),
-      pairName,
-      teacherVideoId: report.teacher_video_id,
-      userVideoId: report.user_video_id,
-      type: "tempo",
-      severity: "medium",
-      sec,
-      frame: null,
-      summary: `第 ${index + 1} 段节奏异常，建议对照拍点和动作转场。`,
-      action: "可先聚焦这一段的拍点、重心转移和动作发力节奏。",
-      finishedAt: report.finished_at || report.updated_at,
-      scoreTotal: report.score_total,
-      confidenceScore: report.confidence_score,
-    });
-  }
-
-  const confidenceSummary = normalizedConfidenceSummary(report.report?.confidence, report.confidence_summary);
-  const confidenceIssues = normalizedConfidenceIssues(report.report?.confidence);
-  for (let index = 0; index < confidenceIssues.length; index += 1) {
-    const issue = confidenceIssues[index] as any;
-    const markerSec = Number(markers.find((item: any) => Number.isFinite(Number(item?.sec)))?.sec);
-    result.push({
-      id: `${report.pipeline_id}_confidence_${index}`,
-      pipelineId: String(report.pipeline_id || ""),
-      pairName,
-      teacherVideoId: report.teacher_video_id,
-      userVideoId: report.user_video_id,
-      type: "confidence",
-      severity: "high",
-      sec: Number.isFinite(markerSec) ? markerSec : 0,
-      frame: null,
-      summary: String(issue?.message || confidenceSummary || "本轮分析存在可信度风险。"),
-      action: String(issue?.suggestion || "建议先改善拍摄视角或跟踪质量，再重新复测。"),
-      finishedAt: report.finished_at || report.updated_at,
-      scoreTotal: report.score_total,
-      confidenceScore: report.confidence_score,
-    });
-  }
-
-  return result.sort((a, b) => a.sec - b.sec);
-}
-
-function markerSeverity(value?: string): IssueSeverity {
-  if (value === "severe" || value === "clear") return "high";
-  if (value === "mild") return "medium";
-  return "medium";
 }
 
 function progressPercent(progress?: number | null) {
@@ -940,12 +1007,9 @@ function formatDate(value?: string | null) {
 
 watch(
   () => route.query.tab,
-  async (value) => {
+  (value) => {
     const nextTab = parseTab(value);
     activeTab.value = nextTab;
-    if (nextTab === "issues") {
-      await ensureIssueMapLoaded();
-    }
   },
 );
 
@@ -957,18 +1021,9 @@ watch(
   },
 );
 
-watch(activeTab, async (value) => {
-  if (value === "issues") {
-    await ensureIssueMapLoaded();
-  }
-});
-
 onMounted(async () => {
   activeTab.value = parseTab(route.query.tab);
   await loadWorkspace();
-  if (activeTab.value === "issues") {
-    await ensureIssueMapLoaded();
-  }
 });
 </script>
 
@@ -1073,7 +1128,7 @@ onMounted(async () => {
 
 .records-table-head {
   display: grid;
-  grid-template-columns: minmax(0, 1.7fr) 160px 180px 220px;
+  grid-template-columns: 36px minmax(0, 1.7fr) 160px 180px 220px;
   gap: 12px;
   padding: 0 14px 8px;
   border-bottom: 1px solid rgba(15, 23, 42, 0.08);
@@ -1084,11 +1139,69 @@ onMounted(async () => {
 }
 
 .issue-table-head {
-  grid-template-columns: minmax(0, 1.8fr) 140px 120px 220px;
+  grid-template-columns: 36px minmax(0, 1.8fr) 140px 120px 220px;
+}
+
+.bulk-action-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 16px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background:
+    radial-gradient(circle at top left, rgba(15, 143, 179, 0.08), transparent 28%),
+    rgba(255, 255, 255, 0.82);
+}
+
+.bulk-select {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text);
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.bulk-select input,
+.row-check input {
+  width: 18px;
+  height: 18px;
+  min-height: 18px;
+  padding: 0;
+  accent-color: var(--accent);
 }
 
 .dense-list {
   gap: 10px;
+}
+
+.record-row-wrap {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  gap: 10px;
+  align-items: stretch;
+}
+
+.row-check {
+  display: grid;
+  place-items: center;
+  min-height: 100%;
+  border-radius: 14px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: rgba(255, 255, 255, 0.76);
+  cursor: pointer;
+}
+
+.row-check:hover:not(.disabled) {
+  border-color: rgba(15, 143, 179, 0.28);
+  background: rgba(232, 247, 252, 0.72);
+}
+
+.row-check.disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
 }
 
 .dense-row {
@@ -1112,13 +1225,15 @@ onMounted(async () => {
 
 .dense-row:hover:not(:disabled) {
   transform: translateY(-1px);
-  border-color: rgba(226, 109, 61, 0.18);
+  border-color: rgba(15, 143, 179, 0.22);
   box-shadow: 0 10px 20px rgba(15, 23, 42, 0.04);
 }
 
 .dense-row.active {
-  border-color: rgba(226, 109, 61, 0.28);
-  background: linear-gradient(180deg, rgba(255, 248, 243, 0.98) 0%, rgba(255, 255, 255, 0.98) 100%);
+  border-color: rgba(15, 143, 179, 0.32);
+  background:
+    radial-gradient(circle at top right, rgba(15, 143, 179, 0.1), transparent 32%),
+    linear-gradient(180deg, rgba(248, 252, 255, 0.98) 0%, rgba(255, 255, 255, 0.98) 100%);
 }
 
 .dense-col {
@@ -1168,6 +1283,20 @@ onMounted(async () => {
   flex-wrap: wrap;
 }
 
+.ai-record-card {
+  border-color: rgba(15, 143, 179, 0.18);
+  background:
+    radial-gradient(circle at top right, rgba(15, 143, 179, 0.12), transparent 32%),
+    rgba(255, 255, 255, 0.9);
+}
+
+.record-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .issue-chip-list {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
@@ -1203,6 +1332,15 @@ onMounted(async () => {
   .issue-dense-row,
   .detail-columns {
     grid-template-columns: 1fr;
+  }
+
+  .record-row-wrap {
+    grid-template-columns: 32px minmax(0, 1fr);
+  }
+
+  .bulk-action-bar {
+    align-items: stretch;
+    flex-direction: column;
   }
 }
 

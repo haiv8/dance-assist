@@ -98,8 +98,40 @@ export async function getAnalysisReport(pipelineId: string): Promise<AnalysisRep
 }
 
 
-export async function getSystemStatus(): Promise<SystemStatusResponse> {
+const SYSTEM_STATUS_CACHE_TTL_MS = 60_000;
+let cachedSystemStatus: SystemStatusResponse | null = null;
+let cachedSystemStatusAt = 0;
+let systemStatusRequest: Promise<SystemStatusResponse> | null = null;
+
+export async function getSystemStatus(options?: { force?: boolean; maxAgeMs?: number }): Promise<SystemStatusResponse> {
+  const maxAgeMs = options?.maxAgeMs ?? SYSTEM_STATUS_CACHE_TTL_MS;
+  const now = Date.now();
+  if (!options?.force && cachedSystemStatus && now - cachedSystemStatusAt < maxAgeMs) {
+    return cachedSystemStatus;
+  }
+  if (!options?.force && systemStatusRequest) return systemStatusRequest;
+
+  systemStatusRequest = http.get<SystemStatusResponse>("/api/system/status")
+    .then(({ data }) => {
+      cachedSystemStatus = data;
+      cachedSystemStatusAt = Date.now();
+      return data;
+    })
+    .finally(() => {
+      systemStatusRequest = null;
+    });
+
+  return systemStatusRequest;
+}
+
+export function getCachedSystemStatus(): SystemStatusResponse | null {
+  return cachedSystemStatus;
+}
+
+export async function getSystemStatusUncached(): Promise<SystemStatusResponse> {
   const { data } = await http.get<SystemStatusResponse>("/api/system/status");
+  cachedSystemStatus = data;
+  cachedSystemStatusAt = Date.now();
   return data;
 }
 

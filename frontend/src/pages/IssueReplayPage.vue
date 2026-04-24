@@ -213,6 +213,7 @@ import { useRoute, useRouter } from "vue-router";
 import { deletePipelineTask, getAnalysisReport, listAnalysisReports } from "../api/pipelines";
 import { focusDetailPanel } from "../utils/detailPanel";
 import { normalizedConfidenceIssues, normalizedConfidenceSummary } from "../utils/confidence";
+import { friendlyError } from "../utils/errors";
 import type { AnalysisReportDetailResponse, AnalysisReportItem } from "../types/video";
 
 type IssueSeverity = "high" | "medium" | "low";
@@ -413,7 +414,7 @@ async function loadReports() {
     issueMap.value = nextMap;
     alignSelection();
   } catch (err: any) {
-    error.value = err?.response?.data?.detail ?? err?.message ?? "问题回放列表加载失败";
+    error.value = friendlyError(err, "问题回放列表加载失败");
   } finally {
     loading.value = false;
   }
@@ -477,7 +478,7 @@ async function deleteSelectedIssue() {
     issueMap.value = nextMap;
     alignSelection();
   } catch (err: any) {
-    error.value = err?.response?.data?.detail ?? err?.message ?? "删除历史记录失败";
+    error.value = friendlyError(err, "删除历史记录失败");
   } finally {
     deletingIssue.value = false;
   }

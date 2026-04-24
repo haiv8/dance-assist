@@ -23,6 +23,15 @@ from pathlib import Path
 from urllib.parse import urlparse
 from urllib.request import urlopen
 
+if getattr(sys, "frozen", False):
+    bundle_dir = Path(getattr(sys, "_MEIPASS", Path(sys.executable).resolve().parent))
+    for dll_dir in (bundle_dir, bundle_dir / "Library" / "bin"):
+        if dll_dir.exists():
+            try:
+                os.add_dll_directory(str(dll_dir))
+            except Exception:
+                pass
+
 import uvicorn
 
 HOST = "127.0.0.1"
@@ -32,23 +41,23 @@ LOADING_ROUTE = "/__launcher__/loading"
 
 
 def _launcher_loading_html() -> str:
-    api_url = f"http://{HOST}:{API_PORT}/health"
+    api_url = f"http://{HOST}:{API_PORT}/health/ready"
     return f"""<!doctype html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Dance Assist is starting</title>
+  <title>Dance Assist 正在启动</title>
   <style>
     :root {{
       color-scheme: light;
-      --bg: #eef3f8;
-      --panel: rgba(255,255,255,0.88);
-      --ink: #142033;
-      --muted: #627086;
-      --accent: #de6d3d;
-      --accent-soft: rgba(222,109,61,0.14);
-      --line: rgba(20,32,51,0.08);
+      --bg: #edf4f7;
+      --ink: #172033;
+      --muted: #647388;
+      --accent: #0f8fb3;
+      --accent-2: #e06f3f;
+      --glass: rgba(255, 255, 255, 0.68);
+      --line: rgba(23, 32, 51, 0.09);
     }}
     * {{ box-sizing: border-box; }}
     body {{
@@ -56,121 +65,210 @@ def _launcher_loading_html() -> str:
       min-height: 100vh;
       display: grid;
       place-items: center;
-      font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      overflow: hidden;
+      font-family: "Segoe UI Variable", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
       color: var(--ink);
       background:
-        radial-gradient(circle at top left, rgba(222,109,61,0.18), transparent 34%),
-        radial-gradient(circle at bottom right, rgba(20,32,51,0.10), transparent 38%),
-        linear-gradient(180deg, #f6f8fb 0%, var(--bg) 100%);
+        radial-gradient(circle at 18% 18%, rgba(15, 143, 179, 0.18), transparent 30%),
+        radial-gradient(circle at 82% 76%, rgba(224, 111, 63, 0.16), transparent 34%),
+        linear-gradient(135deg, #f9fbfc 0%, var(--bg) 52%, #e8f0f4 100%);
+    }}
+    body::before,
+    body::after {{
+      content: "";
+      position: fixed;
+      width: 44vmax;
+      height: 44vmax;
+      border-radius: 999px;
+      filter: blur(18px);
+      opacity: 0.42;
+      pointer-events: none;
+    }}
+    body::before {{
+      left: -18vmax;
+      top: -16vmax;
+      background: radial-gradient(circle, rgba(15, 143, 179, 0.26), transparent 64%);
+    }}
+    body::after {{
+      right: -16vmax;
+      bottom: -18vmax;
+      background: radial-gradient(circle, rgba(224, 111, 63, 0.22), transparent 62%);
     }}
     .panel {{
-      width: min(560px, calc(100vw - 40px));
-      padding: 30px 30px 26px;
-      border-radius: 24px;
-      background: var(--panel);
+      position: relative;
+      width: min(460px, calc(100vw - 48px));
+      display: grid;
+      justify-items: center;
+      gap: 18px;
+      padding: 42px 38px 34px;
+      border-radius: 32px;
+      background: var(--glass);
       border: 1px solid var(--line);
-      box-shadow: 0 24px 80px rgba(20,32,51,0.12);
-      backdrop-filter: blur(12px);
+      box-shadow: 0 28px 90px rgba(23, 32, 51, 0.14);
+      backdrop-filter: blur(22px);
+      animation: rise 0.45s ease both;
     }}
-    .eyebrow {{
-      display: inline-flex;
-      align-items: center;
-      gap: 10px;
-      padding: 8px 12px;
+    .mark {{
+      position: relative;
+      width: 92px;
+      height: 92px;
+      display: grid;
+      place-items: center;
+    }}
+    .spinner {{
+      position: absolute;
+      inset: 0;
       border-radius: 999px;
-      background: var(--accent-soft);
-      color: var(--accent);
-      font-size: 13px;
-      font-weight: 600;
-      letter-spacing: 0.02em;
+      border: 2px solid rgba(23, 32, 51, 0.08);
+      border-top-color: var(--accent);
+      border-right-color: rgba(224, 111, 63, 0.72);
+      animation: spin 0.96s linear infinite;
     }}
-    .dot {{
-      width: 10px;
-      height: 10px;
-      border-radius: 999px;
-      background: var(--accent);
-      box-shadow: 0 0 0 0 rgba(222,109,61,0.45);
-      animation: pulse 1.5s infinite;
+    .logo {{
+      width: 58px;
+      height: 58px;
+      border-radius: 20px;
+      object-fit: cover;
+      box-shadow: 0 16px 34px rgba(15, 143, 179, 0.2);
     }}
-    h1 {{ margin: 20px 0 10px; font-size: 30px; line-height: 1.15; }}
-    p {{ margin: 0; color: var(--muted); line-height: 1.7; }}
-    .status {{ margin-top: 20px; font-size: 15px; color: var(--ink); font-weight: 600; }}
-    .progress {{
-      margin-top: 18px;
+    .brand {{
+      display: grid;
+      justify-items: center;
+      gap: 8px;
+      text-align: center;
+    }}
+    h1 {{
+      margin: 0;
+      font-size: clamp(30px, 5vw, 42px);
+      line-height: 1;
+      letter-spacing: -0.055em;
+    }}
+    p {{
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.65;
+    }}
+    .status {{
+      min-height: 24px;
+      color: var(--ink);
+      font-size: 15px;
+      font-weight: 700;
+    }}
+    .progress-line {{
       width: 100%;
-      height: 12px;
+      height: 6px;
       border-radius: 999px;
       overflow: hidden;
-      background: rgba(20,32,51,0.08);
+      background: rgba(23, 32, 51, 0.07);
       position: relative;
     }}
-    .progress::after {{
+    .progress-line::after {{
       content: "";
       position: absolute;
       inset: 0;
-      width: 38%;
+      width: 42%;
       border-radius: inherit;
-      background: linear-gradient(90deg, #f19a67 0%, #de6d3d 100%);
-      animation: slide 1.3s ease-in-out infinite;
+      background: linear-gradient(90deg, transparent, var(--accent), var(--accent-2), transparent);
+      animation: glide 1.45s ease-in-out infinite;
     }}
-    .tips {{
-      margin-top: 18px;
-      display: grid;
-      gap: 10px;
+    .steps {{
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
       color: var(--muted);
-      font-size: 14px;
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
     }}
-    code {{
-      font-family: Consolas, monospace;
-      padding: 2px 6px;
-      border-radius: 8px;
-      background: rgba(20,32,51,0.06);
-      color: var(--ink);
+    .step-dot {{
+      width: 6px;
+      height: 6px;
+      border-radius: 999px;
+      background: rgba(23, 32, 51, 0.2);
+      animation: breathe 1.8s ease-in-out infinite;
     }}
-    @keyframes slide {{
+    .step-dot:nth-child(2) {{ animation-delay: 0.2s; }}
+    .step-dot:nth-child(3) {{ animation-delay: 0.4s; }}
+    .hint {{
+      max-width: 34ch;
+      text-align: center;
+      font-size: 13px;
+    }}
+    @keyframes spin {{
+      to {{ transform: rotate(360deg); }}
+    }}
+    @keyframes glide {{
       0% {{ transform: translateX(-110%); }}
-      100% {{ transform: translateX(320%); }}
+      100% {{ transform: translateX(250%); }}
     }}
-    @keyframes pulse {{
-      0% {{ box-shadow: 0 0 0 0 rgba(222,109,61,0.45); }}
-      70% {{ box-shadow: 0 0 0 10px rgba(222,109,61,0); }}
-      100% {{ box-shadow: 0 0 0 0 rgba(222,109,61,0); }}
+    @keyframes breathe {{
+      0%, 100% {{ opacity: 0.32; transform: scale(0.86); }}
+      50% {{ opacity: 1; transform: scale(1); }}
+    }}
+    @keyframes rise {{
+      from {{ opacity: 0; transform: translateY(10px) scale(0.98); }}
+      to {{ opacity: 1; transform: translateY(0) scale(1); }}
+    }}
+    @media (prefers-reduced-motion: reduce) {{
+      .panel,
+      .spinner,
+      .progress-line::after,
+      .step-dot {{
+        animation: none;
+      }}
     }}
   </style>
 </head>
 <body>
   <main class="panel">
-    <div class="eyebrow"><span class="dot"></span><span>Dance Assist launcher</span></div>
-    <h1>Warming up your workspace</h1>
-    <p>The desktop shell is ready. Backend services are starting in the background, and the app will open automatically as soon as the health check passes.</p>
-    <div id="status" class="status">Checking backend status...</div>
-    <div class="progress"></div>
-    <div class="tips">
-      <div>Startup path: <code>static shell -> local services -> API health check -> app</code></div>
-      <div>If this page stays here for too long, check whether local PostgreSQL or Redis is still starting.</div>
+    <div class="mark" aria-hidden="true">
+      <div class="spinner"></div>
+      <img class="logo" src="/dance-assist-logo.png" alt="" />
     </div>
+    <div class="brand">
+      <h1>Dance Assist</h1>
+      <p>正在准备本地分析工作台</p>
+    </div>
+    <div id="status" class="status">正在启动桌面服务...</div>
+    <div class="progress-line" aria-hidden="true"></div>
+    <div class="steps" aria-hidden="true">
+      <span class="step-dot"></span>
+      <span class="step-dot"></span>
+      <span class="step-dot"></span>
+    </div>
+    <p id="hint" class="hint">首次冷启动会稍慢一些，准备完成后会自动进入主界面。</p>
   </main>
   <script>
     const statusEl = document.getElementById('status');
+    const hintEl = document.getElementById('hint');
     const apiUrl = {api_url!r};
     const appUrl = '/';
     let attempts = 0;
+    const stages = [
+      ['正在启动桌面服务...', '加载本地窗口与静态界面'],
+      ['正在连接本地数据...', '检查 PostgreSQL 与运行目录'],
+      ['正在唤醒分析队列...', '准备 Redis 与后台分析 worker'],
+      ['正在检查后端状态...', '等待 API 健康检查通过']
+    ];
 
     async function pollReady() {{
       attempts += 1;
       try {{
         const resp = await fetch(apiUrl, {{ cache: 'no-store' }});
-        if (resp.ok) {{
-          statusEl.textContent = 'Backend is ready. Opening Dance Assist...';
-          window.location.replace(appUrl);
+        const data = resp.ok ? await resp.json() : null;
+        if (data && data.ok) {{
+          statusEl.textContent = '准备完成';
+          hintEl.textContent = '正在进入 Dance Assist...';
+          window.setTimeout(() => window.location.replace(appUrl), 180);
           return;
         }}
       }} catch (err) {{
         // keep waiting
       }}
-      statusEl.textContent = attempts < 6
-        ? 'Starting local backend services...'
-        : 'Still warming up the backend. This can take a little longer on the first launch.';
+      const stage = stages[Math.min(stages.length - 1, Math.floor(attempts / 4))];
+      statusEl.textContent = attempts < 22 ? stage[0] : '冷启动时间稍长，请稍候...';
+      hintEl.textContent = attempts < 22 ? stage[1] : '如果长时间停留，可用 run-desktop-debug.bat 查看启动日志。';
       window.setTimeout(pollReady, 800);
     }}
 
@@ -219,6 +317,12 @@ def _root_dir() -> Path:
     return Path(__file__).resolve().parent
 
 
+def _resource_dir(root: Path) -> Path:
+    if getattr(sys, "frozen", False):
+        return Path(getattr(sys, "_MEIPASS", root)).resolve()
+    return root
+
+
 def _log_phase(message: str) -> None:
     stamp = time.strftime('%H:%M:%S')
     print(f'[{stamp}] {message}')
@@ -244,6 +348,12 @@ def _start_local_postgres(root: Path) -> bool:
         return False
 
     start_script = root / "scripts" / "start-local-postgres.ps1"
+    if not start_script.exists() and getattr(sys, "frozen", False):
+        for candidate in (root.parent, root.parent.parent):
+            candidate_script = candidate / "scripts" / "start-local-postgres.ps1"
+            if candidate_script.exists():
+                start_script = candidate_script
+                break
     if not start_script.exists():
         return False
 
@@ -276,6 +386,12 @@ def _stop_local_postgres(root: Path) -> None:
 
 def _read_dotenv_defaults(root: Path) -> dict[str, str]:
     env_file = root / ".env"
+    if not env_file.exists() and getattr(sys, "frozen", False):
+        for candidate in (root.parent, root.parent.parent):
+            candidate_env = candidate / ".env"
+            if candidate_env.exists():
+                env_file = candidate_env
+                break
     if not env_file.exists():
         return {}
     values: dict[str, str] = {}
@@ -428,6 +544,19 @@ def _backend_health_report(timeout_sec: float = 2.0) -> dict | None:
         return None
 
 
+def _wait_backend_health_report(timeout_sec: float = 25.0) -> dict | None:
+    deadline = time.time() + timeout_sec
+    last_report: dict | None = None
+    while time.time() < deadline:
+        report = _backend_health_report(timeout_sec=1.0)
+        if isinstance(report, dict):
+            last_report = report
+            if report.get("ok"):
+                return report
+        time.sleep(0.5)
+    return last_report
+
+
 def _prepare_runtime_env(root: Path) -> None:
     # Prefer .env defaults so desktop mode uses the same runtime home as scripts and API checks.
     if not os.getenv("DANCE_ASSIST_HOME"):
@@ -445,6 +574,19 @@ def _prepare_runtime_env(root: Path) -> None:
 def _start_redis_pipeline_worker(root: Path) -> subprocess.Popen[str] | None:
     if _configured_pipeline_executor(root) != "redis_queue":
         return None
+
+    redis_url = _configured_redis_url(root)
+    if redis_url:
+        try:
+            import redis
+
+            client = redis.Redis.from_url(redis_url, decode_responses=True)
+            if client.get(_dotenv_or_env(root, "DANCE_ASSIST_REDIS_WORKER_HEARTBEAT_KEY", "dance_assist:pipeline_jobs:worker_heartbeat")):
+                _log_phase("Redis pipeline worker is already alive; reusing it.")
+                return None
+        except Exception:
+            # If Redis is still warming up, continue with the normal startup path.
+            pass
 
     python = root / ".venv" / "Scripts" / "python.exe"
     backend_dir = root / "backend"
@@ -467,7 +609,7 @@ def _start_redis_pipeline_worker(root: Path) -> subprocess.Popen[str] | None:
 
 def _start_backend(root: Path) -> tuple[uvicorn.Server | None, threading.Thread | None]:
     if _is_port_open(HOST, API_PORT):
-        report = _backend_health_report()
+        report = _wait_backend_health_report(timeout_sec=25.0)
         expected_home = _expected_app_home(root).resolve()
         actual_home = None
         if isinstance(report, dict) and report.get("app_home"):
@@ -477,12 +619,23 @@ def _start_backend(root: Path) -> tuple[uvicorn.Server | None, threading.Thread 
                 actual_home = None
         if actual_home == expected_home:
             return None, None
-        raise RuntimeError(
-            f"Backend port {API_PORT} is already occupied by another instance or runtime home. "
-            f"expected={expected_home} actual={actual_home or 'unknown'}"
-        )
+        if not _is_port_open(HOST, API_PORT):
+            _log_phase(f"Backend port {API_PORT} was released by a previous instance; starting a fresh backend.")
+        else:
+            _log_phase(f"Backend port {API_PORT} is occupied but not ready; waiting for it to release.")
+            release_deadline = time.time() + 30.0
+            while time.time() < release_deadline:
+                if not _is_port_open(HOST, API_PORT):
+                    _log_phase(f"Backend port {API_PORT} released; starting a fresh backend.")
+                    break
+                time.sleep(0.5)
+            else:
+                raise RuntimeError(
+                    f"Backend port {API_PORT} is already occupied by another instance, is still starting, or uses another runtime home. "
+                    f"expected={expected_home} actual={actual_home or 'unknown'}"
+                )
 
-    backend_dir = root / "backend"
+    backend_dir = _resource_dir(root) / "backend"
     if not backend_dir.exists():
         raise FileNotFoundError(f"backend dir not found: {backend_dir}")
 
@@ -498,6 +651,8 @@ def _start_backend(root: Path) -> tuple[uvicorn.Server | None, threading.Thread 
     server = uvicorn.Server(config)
     thread = threading.Thread(target=server.run, daemon=True)
     thread.start()
+    if not _wait_port(HOST, API_PORT, timeout_sec=10):
+        raise RuntimeError(f"Backend did not open port {API_PORT} in time")
     return server, thread
 
 
@@ -505,7 +660,7 @@ def _start_static_server(root: Path) -> tuple[http.server.ThreadingHTTPServer | 
     if _is_port_open(HOST, WEB_PORT):
         return None, None
 
-    dist_dir = root / "frontend" / "dist"
+    dist_dir = _resource_dir(root) / "frontend" / "dist"
     if not dist_dir.exists():
         raise FileNotFoundError(
             f"frontend dist not found: {dist_dir}\\n"
@@ -526,6 +681,8 @@ def _open_desktop_window(url: str, *, strict: bool = False) -> bool:
         return False
 
     try:
+        storage_path = Path(os.getenv("DANCE_ASSIST_HOME", str(_expected_app_home(_root_dir())))) / "webview"
+        storage_path.mkdir(parents=True, exist_ok=True)
         webview.create_window(
             "Dance Assist",
             url,
@@ -535,13 +692,41 @@ def _open_desktop_window(url: str, *, strict: bool = False) -> bool:
             confirm_close=True,
             background_color="#EFF3F8",
         )
-        webview.start()
+        webview.start(private_mode=False, storage_path=str(storage_path))
         return True
     except Exception as exc:
         if strict:
             raise RuntimeError(f"embedded desktop window unavailable: {exc}") from exc
         print(f"[WARN] Embedded desktop window unavailable, falling back to browser: {exc}")
         return False
+
+
+def _open_browser_app_window(url: str) -> bool:
+    edge_candidates = [
+        Path(os.getenv("ProgramFiles(x86)", "")) / "Microsoft" / "Edge" / "Application" / "msedge.exe",
+        Path(os.getenv("ProgramFiles", "")) / "Microsoft" / "Edge" / "Application" / "msedge.exe",
+    ]
+    edge_path = next((path for path in edge_candidates if path.exists()), None)
+    if edge_path is None:
+        found = shutil.which("msedge")
+        edge_path = Path(found) if found else None
+
+    if edge_path and edge_path.exists():
+        subprocess.Popen(
+            [
+                str(edge_path),
+                f"--app={url}",
+                "--new-window",
+                "--disable-features=Translate",
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        return True
+
+    webbrowser.open(url, new=2)
+    return False
 
 
 def _parse_args() -> argparse.Namespace:
@@ -566,50 +751,71 @@ def main() -> int:
         print(f"[ERROR] Frontend shell not ready on {HOST}:{WEB_PORT}")
         return 1
 
-    _log_phase('Warming local services...')
-    postgres_started, redis_process = _start_local_services(root)
-    redis_worker = _start_redis_pipeline_worker(root)
-
-    _log_phase('Booting backend...')
-    backend_server, _ = _start_backend(root)
+    resources: dict[str, object | None] = {
+        "postgres_started": False,
+        "redis_process": None,
+        "redis_worker": None,
+        "backend_server": None,
+    }
 
     def _cleanup() -> None:
         if static_server is not None:
             static_server.shutdown()
             static_server.server_close()
+        backend_server = resources.get("backend_server")
         if backend_server is not None:
             backend_server.should_exit = True
+        redis_worker = resources.get("redis_worker")
         if redis_worker is not None:
             redis_worker.terminate()
             try:
                 redis_worker.wait(timeout=5)
             except Exception:
                 redis_worker.kill()
+        redis_process = resources.get("redis_process")
         if redis_process is not None:
             redis_process.terminate()
             try:
                 redis_process.wait(timeout=5)
             except Exception:
                 redis_process.kill()
-        if postgres_started:
+        if resources.get("postgres_started"):
             _stop_local_postgres(root)
 
     atexit.register(_cleanup)
 
     app_url = f"http://{HOST}:{WEB_PORT}"
-    launch_url = app_url if _is_port_open(HOST, API_PORT) else f"{app_url}{LOADING_ROUTE}"
+    ready_report = _backend_health_report(timeout_sec=0.6)
+    launch_url = app_url if isinstance(ready_report, dict) and ready_report.get("ok") else f"{app_url}{LOADING_ROUTE}"
 
-    def _announce_ready() -> None:
-        if _wait_port(HOST, API_PORT, timeout_sec=25):
-            _log_phase(f'Dance Assist is ready: {app_url}')
-        else:
-            _log_phase('Backend warm-up is taking longer than expected.')
+    def _boot_runtime() -> None:
+        try:
+            _log_phase('Warming local services...')
+            postgres_started, redis_process = _start_local_services(root)
+            resources["postgres_started"] = postgres_started
+            resources["redis_process"] = redis_process
 
-    threading.Thread(target=_announce_ready, daemon=True).start()
+            resources["redis_worker"] = _start_redis_pipeline_worker(root)
+
+            _log_phase('Booting backend...')
+            backend_server, _ = _start_backend(root)
+            resources["backend_server"] = backend_server
+
+            report = _wait_backend_health_report(timeout_sec=25)
+            if isinstance(report, dict) and report.get("ok"):
+                _log_phase(f'Dance Assist is ready: {app_url}')
+            else:
+                _log_phase('Backend warm-up is taking longer than expected.')
+        except Exception as exc:
+            _log_phase(f'Runtime boot failed: {type(exc).__name__}: {exc}')
+
+    threading.Thread(target=_boot_runtime, daemon=True, name="dance-assist-runtime-boot").start()
 
     if args.mode == "browser":
-        webbrowser.open(launch_url, new=2)
-        _log_phase('Browser mode started. Keep this window open to keep services alive.')
+        if _open_browser_app_window(launch_url):
+            _log_phase('App-window browser mode started. Keep this process alive to keep services alive.')
+        else:
+            _log_phase('Browser mode started. Keep this process alive to keep services alive.')
     elif args.mode == "desktop":
         try:
             if _open_desktop_window(launch_url, strict=True):
