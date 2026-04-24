@@ -2,6 +2,7 @@ import type { Ref } from "vue";
 
 const STACKED_LAYOUT_QUERY = "(max-width: 1180px)";
 const DETAIL_TOP_OFFSET = 96;
+const DETAIL_BOTTOM_PADDING = 32;
 
 export function focusDetailPanel(
   panelRef: Ref<HTMLElement | null>,
@@ -20,8 +21,10 @@ export function focusDetailPanel(
     if (!isStackedLayout && !options?.forceScroll) return;
 
     const isFarAboveViewport = rect.top < DETAIL_TOP_OFFSET;
-    const isBelowFold = rect.top > window.innerHeight * 0.45;
-    if (!options?.forceScroll && !isFarAboveViewport && !isBelowFold) return;
+    const isBelowFold = rect.top > window.innerHeight * 0.58;
+    const isPartlyCoveredBelow = rect.bottom > window.innerHeight - DETAIL_BOTTOM_PADDING;
+    const shouldScroll = isFarAboveViewport || isBelowFold || isPartlyCoveredBelow;
+    if (!shouldScroll) return;
 
     const top = window.scrollY + rect.top - DETAIL_TOP_OFFSET;
     window.scrollTo({
