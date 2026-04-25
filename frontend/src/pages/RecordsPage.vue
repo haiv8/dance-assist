@@ -323,6 +323,7 @@
                   <span class="helper-text" v-if="aiCoach.practice_plan[0]">
                     建议先练：{{ aiCoach.practice_plan[0].title }}，{{ aiCoach.practice_plan[0].duration_min }} 分钟。
                   </span>
+                  <span class="helper-text" v-if="aiCoachFallbackHint">{{ aiCoachFallbackHint }}</span>
                   <span class="helper-text" v-if="aiCoach.setup_hint">{{ aiCoach.setup_hint }}</span>
                 </template>
               </div>
@@ -582,6 +583,10 @@ const aiCoachSourceText = computed(() => {
   if (aiCoach.value.generated_by === "aliyun") return aiCoach.value.model || "阿里云百炼";
   if (aiCoach.value.generated_by === "openai") return aiCoach.value.model || "OpenAI";
   return "本地兜底";
+});
+const aiCoachFallbackHint = computed(() => {
+  if (aiCoach.value?.generated_by !== "local_fallback") return "";
+  return "当前展示的是基于分析报告的本地规则建议；云端 AI 不可用时，演示复盘仍可继续。";
 });
 const topJointSummary = computed(() => {
   const joints = detail.value?.report?.top_joints ?? detail.value?.top_joints;

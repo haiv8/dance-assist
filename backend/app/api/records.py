@@ -9,5 +9,5 @@ router = APIRouter(prefix="/records", tags=["records"])
 
 
 @router.get("/workspace", response_model=RecordWorkspaceResponse)
-async def records_workspace_api(limit: int = 100):
+async def records_workspace_api(limit: int = 50):
     return RecordWorkspaceResponse(**list_records_workspace(limit=limit))

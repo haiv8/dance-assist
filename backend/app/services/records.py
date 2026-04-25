@@ -8,7 +8,7 @@ def _latest_time(item: dict) -> str:
     return str(item.get("updated_at") or item.get("finished_at") or item.get("started_at") or item.get("queued_at") or "")
 
 
-def list_records_workspace(limit: int = 100) -> dict:
+def list_records_workspace(limit: int = 50) -> dict:
     safe_limit = max(1, min(200, int(limit)))
 
     task_items = list_pipeline_tasks(limit=safe_limit).get("items", [])
@@ -62,6 +62,10 @@ def list_records_workspace(limit: int = 100) -> dict:
 
     merged_items.sort(key=_latest_time, reverse=True)
 
+    # This workspace endpoint is an on-demand prototype aggregator for the
+    # defense demo. Keep the default window small; a later issue index should be
+    # persisted when each pipeline finishes so the list view does not parse full
+    # reports on every request.
     issues: list[dict] = []
     for item in merged_items:
         if item.get("status") != "done":
