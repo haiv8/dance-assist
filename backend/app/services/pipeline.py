@@ -15,6 +15,7 @@ import numpy as np
 from fastapi import HTTPException
 
 from app.services.pipeline_executor import get_pipeline_executor_backend, submit_pipeline_job
+from app.services.record_issue_index import delete_record_issue_index, write_record_issue_index
 from app.services.storage import get_video_meta
 from app.services.task_store import (
     delete_pipeline_record,
@@ -607,7 +608,7 @@ def _pipeline_worker(
             "keyframes_compare_url": _artifact_url(pair_name, "keyframes_compare.png"),
         }
 
-        _update_task_progress(
+        completed_task = _update_task_progress(
             pipeline_id,
             stage="completed",
             message="pipeline completed",
@@ -622,6 +623,10 @@ def _pipeline_worker(
             files=files,
             error_type=None,
         )
+        try:
+            write_record_issue_index(analysis_report_payload_from_summary(completed_task))
+        except Exception:
+            pass
         _record_pipeline_event(
             pipeline_id,
             "completed",
@@ -716,6 +721,7 @@ def remove_pipeline_task(pipeline_id: str) -> dict[str, Any]:
         raise HTTPException(status_code=409, detail="running task cannot be deleted")
 
     record_deleted = delete_pipeline_record(pipeline_id)
+    delete_record_issue_index(pipeline_id)
     file_deleted = _drop_task_file(pipeline_id)
     with _TASK_LOCK:
         removed = _TASKS.pop(pipeline_id, None)

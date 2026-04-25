@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from app.services.pipeline import get_analysis_report, list_analysis_reports, list_pipeline_tasks
-from app.services.record_issues import extract_report_issues
+from app.services.record_issue_index import load_or_build_record_issue_index
 
 
 def _latest_time(item: dict) -> str:
@@ -62,10 +62,6 @@ def list_records_workspace(limit: int = 50) -> dict:
 
     merged_items.sort(key=_latest_time, reverse=True)
 
-    # This workspace endpoint is an on-demand prototype aggregator for the
-    # defense demo. Keep the default window small; a later issue index should be
-    # persisted when each pipeline finishes so the list view does not parse full
-    # reports on every request.
     issues: list[dict] = []
     for item in merged_items:
         if item.get("status") != "done":
@@ -74,10 +70,10 @@ def list_records_workspace(limit: int = 50) -> dict:
         if not pipeline_id:
             continue
         try:
-            detail = get_analysis_report(pipeline_id)
+            item_issues = load_or_build_record_issue_index(item, get_analysis_report)
         except Exception:
             continue
-        issues.extend(extract_report_issues(detail))
+        issues.extend(item_issues)
 
     issues.sort(key=lambda item: (str(item.get("finished_at") or ""), float(item.get("sec") or 0.0)), reverse=True)
 
