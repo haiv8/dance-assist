@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from app.services.pipeline import get_analysis_report, list_analysis_reports, list_pipeline_tasks
-from app.services.record_issue_index import load_or_build_record_issue_index
+from app.services.issue_index import load_or_build_issue_index
 
 
 def _latest_time(item: dict) -> str:
@@ -70,7 +70,7 @@ def list_records_workspace(limit: int = 50) -> dict:
         if not pipeline_id:
             continue
         try:
-            item_issues = load_or_build_record_issue_index(item, get_analysis_report)
+            item_issues = load_or_build_issue_index(item, get_analysis_report)
         except Exception:
             continue
         issues.extend(item_issues)

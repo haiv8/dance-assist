@@ -14,8 +14,8 @@ from typing import Any
 import numpy as np
 from fastapi import HTTPException
 
+from app.services.issue_index import delete_issue_index, save_issue_index
 from app.services.pipeline_executor import get_pipeline_executor_backend, submit_pipeline_job
-from app.services.record_issue_index import delete_record_issue_index, write_record_issue_index
 from app.services.storage import get_video_meta
 from app.services.task_store import (
     delete_pipeline_record,
@@ -598,6 +598,7 @@ def _pipeline_worker(
         files = {
             "report_url": _artifact_url(pair_name, "report.json"),
             "summary_url": _artifact_url(pair_name, "summary.json"),
+            "issues_url": _artifact_url(pair_name, "issues.json"),
             "timeline_npz_url": _artifact_url(pair_name, "timeline.npz"),
             "timeline_json_url": _artifact_url(pair_name, "timeline.json"),
             "teacher_overlay_url": _artifact_url(pair_name, t_overlay.name),
@@ -624,7 +625,7 @@ def _pipeline_worker(
             error_type=None,
         )
         try:
-            write_record_issue_index(analysis_report_payload_from_summary(completed_task))
+            save_issue_index(analysis_report_payload_from_summary(completed_task))
         except Exception:
             pass
         _record_pipeline_event(
@@ -721,7 +722,7 @@ def remove_pipeline_task(pipeline_id: str) -> dict[str, Any]:
         raise HTTPException(status_code=409, detail="running task cannot be deleted")
 
     record_deleted = delete_pipeline_record(pipeline_id)
-    delete_record_issue_index(pipeline_id)
+    delete_issue_index(task)
     file_deleted = _drop_task_file(pipeline_id)
     with _TASK_LOCK:
         removed = _TASKS.pop(pipeline_id, None)

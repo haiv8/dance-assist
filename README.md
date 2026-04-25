@@ -95,6 +95,6 @@ npm run build
 ## 工程边界与后续计划
 
 - 记录中心当前默认只聚合最近 50 条，避免演示阶段因历史记录过多导致列表加载变慢。
-- 问题片段已抽象为 issue index：pipeline 完成时会写入索引，历史记录缺失索引时首次访问会懒生成，记录页优先读取索引而不是重复解析完整报告。
+- 问题片段已抽象为 issue index：pipeline 完成时会在 `outputs/<pair_name>/issues.json` 写入索引；Records Workspace 优先读取该轻量索引，减少重复解析完整报告；旧记录没有 `issues.json` 时会 fallback 解析 report 并顺手补建索引。
 - AI 助教已经具备云端 provider 和本地 fallback，但它不是动作判断算法，只负责训练建议生成。
 - 中期前建议冻结大功能，优先保障启动、上传、分析、记录、删除、AI fallback 等演示链路稳定。
