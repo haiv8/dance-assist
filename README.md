@@ -14,6 +14,17 @@ Dance Assist 是一个面向舞蹈动作学习的本地分析系统。系统围�
 - AI 助教：阿里云百炼、OpenAI、本地规则兜底
 - 桌面入口：Python launcher、Windows bat/vbs、PyInstaller 打包脚本
 
+## 系统依赖
+
+- Python：推荐 Python 3.11；当前虚拟环境位于 `.venv`，后端依赖见 `backend/requirements.txt`。
+- Node.js / npm：推荐 Node.js 18 或 20；前端使用 Vite，进入 `frontend` 后执行 `npm install` 和 `npm run build`。
+- ffmpeg：必须能在命令行直接执行 `ffmpeg`，用于视频转码和骨架叠加视频导出。
+- MediaPipe 模型：需要 `pose_landmarker_full.task`，默认位置为 `models/pose_landmarker_full.task`；模型缺失时相关脚本会尝试下载到本地。
+- Windows 推荐运行方式：优先使用 `run-desktop.bat` 启动桌面入口；调试时使用 `run-browser-debug.bat` 查看浏览器模式和日志。
+- 可选 Redis：当 `DANCE_ASSIST_PIPELINE_EXECUTOR=redis_queue` 时启用队列执行；默认 `local_thread` 不依赖 Redis。
+- 可选 PostgreSQL：配置 `DANCE_ASSIST_DATABASE_URL` 后启用数据库持久化；不配置时使用本地文件兜底。
+- 可选 AI provider API Key：`DANCE_ASSIST_ALIYUN_API_KEY` 或 `DANCE_ASSIST_OPENAI_API_KEY`；未配置时 AI 助教会使用本地规则兜底。
+
 ## 核心功能
 
 - 素材管理：上传教师示范视频和学员练习视频，维护本地素材库。
@@ -76,6 +87,38 @@ python scripts/verify-issue-index.py
 ```
 
 该脚本用于验证 `issues.json` 的生成、读取、候选路径查找和旧索引路径兼容。
+
+## 常见问题
+
+### 后端启动失败怎么办
+
+先检查 `.venv` 是否存在，并确认已安装 `backend/requirements.txt`。再看端口 `8000` 是否被旧进程占用；如果之前异常退出，可以关闭残留的 Python / uvicorn 进程后重新运行 `run-desktop.bat` 或 `run-browser-debug.bat`。
+
+### 前端构建失败怎么办
+
+进入 `frontend` 后先执行 `npm install`，再运行 `npm run build`。如果报 Node 版本问题，优先切到 Node.js 18 或 20；如果是依赖损坏，可删除 `frontend/node_modules` 后重新安装。
+
+### 视频分析失败怎么办
+
+优先确认原视频能正常播放、ffmpeg 可用、磁盘空间充足，并检查 `models/pose_landmarker_full.task` 是否存在。长视频建议先用短片段演示，避免现场等待过久。
+
+### AI 助教不可用怎么办
+
+AI 助教不是核心动作判断算法。没有 API Key、网络异常或 provider 失败时，系统会使用本地规则兜底建议；动作误差仍由姿态估计、DTW 对齐和评分指标产生。
+
+### 记录页没有问题片段怎么办
+
+如果该记录本身没有 markers、tempo segments 或可信度风险，问题片段可能为空。旧记录没有 `issues.json` 时，Records Workspace 会 fallback 解析 report 并补建索引。
+
+### issues.json 怎么验证
+
+运行：
+
+```powershell
+python scripts/verify-issue-index.py
+```
+
+该脚本会验证空报告不崩、有 markers 能生成问题片段、已有 `issues.json` 时不再解析完整 report，并检查旧索引路径兼容。
 
 ## 环境变量
 
