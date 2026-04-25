@@ -12,7 +12,9 @@ if str(BACKEND_ROOT) not in sys.path:
 
 from app.services.issue_index import (
     build_issue_index_from_report,
+    delete_issue_index,
     issue_index_path,
+    issue_index_candidate_paths,
     load_or_build_issue_index,
     save_issue_index,
 )
@@ -49,6 +51,13 @@ def main() -> None:
             assert len(issues) == 1
             assert issue_index_path(report).name == "issues.json"
             assert issue_index_path(report).exists()
+            assert issue_index_path(report).parent.name == "verify_marker_pair"
+
+            url_only_source = {
+                "pipeline_id": "verify_marker",
+                "files": {"report_url": "/artifacts/verify_marker_pair/report.json"},
+            }
+            assert issue_index_candidate_paths(url_only_source)[0] == issue_index_path(report)
 
             def fail_loader(_: str) -> dict:
                 raise AssertionError("report_loader should not be called when issues.json exists")
@@ -61,6 +70,8 @@ def main() -> None:
             legacy_path = legacy_dir / "legacy_pipeline.json"
             legacy_path.write_text(json.dumps(issues, ensure_ascii=False), encoding="utf-8")
             assert load_or_build_issue_index({"pipeline_id": "legacy_pipeline"}, fail_loader)
+            assert delete_issue_index(report)
+            assert not issue_index_path(report).exists()
         finally:
             settings.OUTPUTS_DIR = original_outputs_dir
             settings.DATA_DIR = original_data_dir

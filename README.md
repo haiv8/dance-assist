@@ -69,6 +69,14 @@ cd frontend
 npm run build
 ```
 
+Issue index 自检：
+
+```powershell
+python scripts/verify-issue-index.py
+```
+
+该脚本用于验证 `issues.json` 的生成、读取、候选路径查找和旧索引路径兼容。
+
 ## 环境变量
 
 以 `.env.example` 为模板创建 `.env`。常用配置包括：
