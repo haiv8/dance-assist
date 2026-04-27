@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 from typing import Any
 
 from app.services.record_issues import (
@@ -39,7 +40,7 @@ def report_without_frame_analysis(report: Any) -> dict[str, Any]:
         out["frame_analysis_count"] = len(rows)
     elif "frame_analysis_count" in report:
         out["frame_analysis_count"] = report.get("frame_analysis_count")
-    return out
+    return _json_safe(out)
 
 
 def task_payload_for_storage(task: dict[str, Any]) -> dict[str, Any]:
@@ -47,7 +48,17 @@ def task_payload_for_storage(task: dict[str, Any]) -> dict[str, Any]:
     report = payload.get("report")
     if isinstance(report, dict):
         payload["report"] = report_without_frame_analysis(report)
-    return payload
+    return _json_safe(payload)
+
+
+def _json_safe(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {str(k): _json_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
+    return value
 
 
 def frame_analysis_rows(task: dict[str, Any]) -> list[dict[str, Any]]:
@@ -80,18 +91,18 @@ def frame_analysis_rows(task: dict[str, Any]) -> list[dict[str, Any]]:
                 "frame_error": frame_error,
                 "marker_type": marker_type,
                 "severity": severity,
-                "payload": payload,
+                "payload": _json_safe(payload),
             }
         )
     return out
 
 
 def _json_ready_dict(value: Any) -> dict[str, Any]:
-    return value if isinstance(value, dict) else {}
+    return _json_safe(value) if isinstance(value, dict) else {}
 
 
 def _json_ready_list(value: Any) -> list[Any]:
-    return value if isinstance(value, list) else []
+    return _json_safe(value) if isinstance(value, list) else []
 
 
 def confidence_level_from_score(value: Any) -> str | None:
@@ -274,6 +285,12 @@ def task_confidence_score(task: dict[str, Any]) -> float | None:
 
 
 def task_report_row(task: dict[str, Any]) -> dict[str, Any] | None:
+    def as_db_text(value: Any) -> str | None:
+        if value is None:
+            return None
+        text = str(value).strip()
+        return text or None
+
     report = _json_ready_dict(task.get("report"))
     pair_name = str(task.get("pair_name", "")).strip() or None
     summary = load_output_summary(pair_name)
@@ -300,16 +317,16 @@ def task_report_row(task: dict[str, Any]) -> dict[str, Any] | None:
     )
 
     return {
-        "pipeline_id": str(task.get("pipeline_id", "")).strip(),
+        "pipeline_id": as_db_text(task.get("pipeline_id")) or "",
         "pair_name": pair_name,
-        "teacher_video_id": str(task.get("teacher_video_id", "")).strip() or None,
-        "user_video_id": str(task.get("user_video_id", "")).strip() or None,
-        "status": str(task.get("status", "")).strip() or None,
-        "stage": str(task.get("stage", "")).strip() or None,
-        "executor": str(task.get("executor", "")).strip() or None,
-        "queued_at": str(task.get("queued_at", "")).strip() or None,
-        "started_at": str(task.get("started_at", "")).strip() or None,
-        "finished_at": str(task.get("finished_at", "")).strip() or None,
+        "teacher_video_id": as_db_text(task.get("teacher_video_id")),
+        "user_video_id": as_db_text(task.get("user_video_id")),
+        "status": as_db_text(task.get("status")),
+        "stage": as_db_text(task.get("stage")),
+        "executor": as_db_text(task.get("executor")),
+        "queued_at": as_db_text(task.get("queued_at")),
+        "started_at": as_db_text(task.get("started_at")),
+        "finished_at": as_db_text(task.get("finished_at")),
         "score_total": score_total,
         "score_pose": as_db_float(scores.get("score_pose")) or as_db_float(summary.get("score_pose")),
         "score_tempo": as_db_float(scores.get("score_tempo")) or as_db_float(summary.get("score_tempo")),

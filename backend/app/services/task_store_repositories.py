@@ -255,6 +255,12 @@ class PipelineTaskRepository:
 
     @staticmethod
     def _structured_task_row(task: dict[str, Any]) -> dict[str, Any]:
+        def as_db_text(value: Any) -> str | None:
+            if value is None:
+                return None
+            text = str(value).strip()
+            return text or None
+
         def as_db_float(value: Any) -> float | None:
             try:
                 out = float(value)
@@ -269,20 +275,20 @@ class PipelineTaskRepository:
                 return None
 
         return {
-            "pipeline_id": str(task.get("pipeline_id", "")).strip(),
-            "pair_name": str(task.get("pair_name", "")).strip() or None,
-            "status": str(task.get("status", "")).strip() or None,
-            "stage": str(task.get("stage", "")).strip() or None,
+            "pipeline_id": as_db_text(task.get("pipeline_id")) or "",
+            "pair_name": as_db_text(task.get("pair_name")),
+            "status": as_db_text(task.get("status")),
+            "stage": as_db_text(task.get("stage")),
             "progress": as_db_float(task.get("progress")),
-            "teacher_video_id": str(task.get("teacher_video_id", "")).strip() or None,
-            "user_video_id": str(task.get("user_video_id", "")).strip() or None,
-            "executor": str(task.get("executor", "")).strip() or None,
+            "teacher_video_id": as_db_text(task.get("teacher_video_id")),
+            "user_video_id": as_db_text(task.get("user_video_id")),
+            "executor": as_db_text(task.get("executor")),
             "attempt_count": as_db_int(task.get("attempt_count")),
             "retry_count": as_db_int(task.get("retry_count")),
-            "error_type": str(task.get("error_type", "")).strip() or None,
-            "queued_at": str(task.get("queued_at", "")).strip() or None,
-            "started_at": str(task.get("started_at", "")).strip() or None,
-            "finished_at": str(task.get("finished_at", "")).strip() or None,
+            "error_type": as_db_text(task.get("error_type")),
+            "queued_at": as_db_text(task.get("queued_at")),
+            "started_at": as_db_text(task.get("started_at")),
+            "finished_at": as_db_text(task.get("finished_at")),
             "score_total": task_report_score(task),
             "confidence_score": task_confidence_score(task),
         }
