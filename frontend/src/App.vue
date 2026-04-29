@@ -66,9 +66,13 @@ const iconPaths: Record<NavIcon, string[]> = {
   ],
 };
 
+function matchesPath(basePath: string) {
+  return route.path === basePath || route.path.startsWith(`${basePath}/`);
+}
+
 function isActiveNav(item: NavItem) {
   const paths = [item.to, ...(item.aliases || [])];
-  return paths.some((path) => route.path.startsWith(path));
+  return paths.some((path) => matchesPath(path));
 }
 
 const currentSection = computed(() => navItems.find((item) => isActiveNav(item)) ?? navItems[1]);
@@ -76,7 +80,7 @@ const currentSection = computed(() => navItems.find((item) => isActiveNav(item))
 const shellClasses = computed(() => [
   "app-shell",
   "compact-shell",
-  { "compare-shell": route.path.startsWith("/compare") },
+  { "compare-shell": matchesPath("/compare") },
 ]);
 </script>
 
@@ -119,8 +123,8 @@ const shellClasses = computed(() => [
 
       <RouterLink class="sidebar-note compact-note workspace-note" to="/settings">
         <span class="workspace-note-title">本地工作台</span>
-        <span class="workspace-note-copy">点击进入系统状态检查</span>
-        <span class="workspace-note-current">当前：{{ currentSection.label }}</span>
+        <span class="workspace-note-copy">前往系统状态检查</span>
+        <span class="workspace-note-current">模型、磁盘和服务</span>
       </RouterLink>
     </aside>
 

@@ -9,8 +9,10 @@
   --muted: #64748b;
   --line: rgba(15, 23, 42, 0.09);
   --line-strong: rgba(15, 23, 42, 0.16);
+  /* Primary accent is for navigation, focus rings, progress and main actions. */
   --accent: #0f8fb3;
   --accent-dark: #0b6f8f;
+  /* Warm accent is reserved for emphasis cards and warning-like highlights. */
   --accent-warm: #e26d3d;
   --accent-blue: #2563eb;
   --ok: #15803d;
