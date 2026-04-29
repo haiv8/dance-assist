@@ -4,22 +4,24 @@ import { friendlyError } from "../utils/errors";
 import type { IssueReplayItem, RecordWorkspaceIssueItem, RecordWorkspaceItem } from "../types/video";
 
 export function mapIssueItems(items: RecordWorkspaceIssueItem[]): IssueReplayItem[] {
-  return items.map((item) => ({
-    id: item.id,
-    pipelineId: item.pipeline_id,
-    pairName: item.pair_name,
-    teacherVideoId: item.teacher_video_id,
-    userVideoId: item.user_video_id,
-    type: item.type,
-    severity: item.severity,
-    sec: item.sec,
-    frame: item.frame,
-    summary: item.summary,
-    action: item.action,
-    finishedAt: item.finished_at,
-    scoreTotal: item.score_total,
-    confidenceScore: item.confidence_score,
-  }));
+  return items
+    .filter((item) => item && item.summary && item.type && item.sec !== null && item.sec !== undefined)
+    .map((item) => ({
+      id: item.id,
+      pipelineId: item.pipeline_id,
+      pairName: item.pair_name || "",
+      teacherVideoId: item.teacher_video_id,
+      userVideoId: item.user_video_id,
+      type: item.type,
+      severity: item.severity || "medium",
+      sec: Number(item.sec),
+      frame: item.frame,
+      summary: item.summary,
+      action: item.action,
+      finishedAt: item.finished_at,
+      scoreTotal: item.score_total,
+      confidenceScore: item.confidence_score,
+    }));
 }
 
 export function mapWorkspaceIssues(items: RecordWorkspaceIssueItem[]): Record<string, IssueReplayItem[]> {
@@ -43,7 +45,7 @@ export function useRecordsWorkspace() {
   const issueItems = computed(() =>
     Object.values(issueMap.value)
       .flat()
-      .sort((a, b) => `${b.finishedAt || ""}`.localeCompare(`${a.finishedAt || ""}`) || a.sec - b.sec),
+      .sort((a, b) => `${b.finishedAt || ""}`.localeCompare(`${a.finishedAt || ""}`) || b.sec - a.sec),
   );
 
   async function loadWorkspace(limit = 100) {

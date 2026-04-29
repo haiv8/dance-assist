@@ -34,7 +34,7 @@
       <div class="panel-head compact-head">
         <div>
           <h2>问题回放</h2>
-          <p class="helper-text">这里保留最短路径操作，方便你马上回到所属记录或动作分析页。</p>
+          <p class="helper-text">这里保留最短路径操作，方便马上回到所属记录或动作分析页。</p>
         </div>
         <div class="action-row">
           <button class="secondary-button" type="button" @click="$emit('openRecord', item)">打开所属记录</button>

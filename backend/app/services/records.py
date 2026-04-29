@@ -77,6 +77,8 @@ def list_records_workspace(limit: int = 50) -> dict:
         for issue in item_issues:
             if not isinstance(issue, dict):
                 continue
+            if not issue.get("summary") or not issue.get("type") or issue.get("sec") is None:
+                continue
             normalized = dict(issue)
             normalized["pipeline_id"] = pipeline_id
             normalized["pair_name"] = item.get("pair_name") or normalized.get("pair_name")

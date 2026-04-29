@@ -172,29 +172,26 @@
               :class="{ active: selectedRecordId === item.pipeline_id }"
               @click="toggleRecord(item.pipeline_id)"
             >
-            <div class="dense-col primary-col">
-              <strong>{{ item.pair_name || compactPipelineId(item.pipeline_id) }}</strong>
-              <p class="helper-text">{{ recordLead(item) }}</p>
-            </div>
-            <div class="dense-col">
-              <span class="tag" :class="statusTone(item.status)">{{ statusText(item.status) }}</span>
-              <span class="helper-text">{{ stageText(item.stage, item.status) }}</span>
-            </div>
-            <div class="dense-col">
-              <strong>{{ scoreText(item.score_total) }}</strong>
-              <span class="helper-text">{{ confidenceText(item.confidence_score) }}</span>
-            </div>
-            <div class="dense-col">
-              <strong class="mono-col">{{ formatDate(item.updated_at || item.finished_at || item.started_at || item.queued_at) }}</strong>
-              <span class="helper-text">{{ item.error_type ? `异常：${item.error_type}` : `执行器：${item.executor || "--"}` }}</span>
-            </div>
+              <div class="dense-col primary-col">
+                <strong>{{ item.pair_name || compactPipelineId(item.pipeline_id) }}</strong>
+                <p class="helper-text">{{ recordLead(item) }}</p>
+              </div>
+              <div class="dense-col">
+                <span class="tag" :class="statusTone(item.status)">{{ statusText(item.status) }}</span>
+                <span class="helper-text">{{ stageText(item.stage, item.status) }}</span>
+              </div>
+              <div class="dense-col">
+                <strong>{{ scoreText(item.score_total) }}</strong>
+                <span class="helper-text">{{ confidenceText(item.confidence_score) }}</span>
+              </div>
+              <div class="dense-col">
+                <strong class="mono-col">{{ formatDate(item.updated_at || item.finished_at || item.started_at || item.queued_at) }}</strong>
+                <span class="helper-text">{{ item.error_type ? `异常：${item.error_type}` : `执行器：${item.executor || "--"}` }}</span>
+              </div>
             </button>
           </div>
 
-          <div
-            v-if="selectedRecordId === item.pipeline_id"
-            ref="detailPanelRef"
-          >
+          <div v-if="selectedRecordId === item.pipeline_id" ref="detailPanelRef">
             <RecordDetailPanel
               :item="item"
               :detail="detail"
@@ -247,7 +244,6 @@ import type {
 } from "../types/video";
 
 type WorkspaceTab = "all" | "running" | "completed" | "issues";
-
 type RecordItem = RecordWorkspaceItem;
 
 const router = useRouter();
@@ -360,6 +356,8 @@ const canDeleteSelectedRecord = computed(() => {
   const item = detail.value ?? selectedRecord.value;
   return Boolean(item && item.status !== "pending" && item.status !== "running");
 });
+const canOpenSelectedInCompare = computed(() => Boolean(selectedRecord.value?.teacher_video_id && selectedRecord.value?.user_video_id));
+const detailIssues = computed<IssueReplayItem[]>(() => (Array.isArray(detail.value?.issues) ? mapIssueItems(detail.value?.issues || []) : []));
 
 function setSelectedPipelineIds(nextIds: Iterable<string>) {
   selectedPipelineIds.value = new Set(nextIds);
@@ -389,9 +387,6 @@ function toggleSelectAllVisible() {
   }
   setSelectedPipelineIds(next);
 }
-
-const canOpenSelectedInCompare = computed(() => Boolean(selectedRecord.value?.teacher_video_id && selectedRecord.value?.user_video_id));
-const detailIssues = computed<IssueReplayItem[]>(() => (Array.isArray(detail.value?.issues) ? mapIssueItems(detail.value?.issues || []) : []));
 
 function parseTab(value: unknown): WorkspaceTab {
   if (value === "running" || value === "completed" || value === "issues" || value === "all") return value;
@@ -551,13 +546,13 @@ async function deleteSelectedPipelines() {
   const failed: string[] = [];
   try {
     for (const pipelineId of pipelineIds) {
-        deletingId.value = pipelineId;
-        try {
-          await deletePipelineTask(pipelineId);
-          removePipeline(pipelineId);
-          if (selectedRecordId.value === pipelineId) closeRecordDetail();
-          if (selectedIssue.value?.pipelineId === pipelineId) closeIssueDetail();
-        } catch (err: any) {
+      deletingId.value = pipelineId;
+      try {
+        await deletePipelineTask(pipelineId);
+        removePipeline(pipelineId);
+        if (selectedRecordId.value === pipelineId) closeRecordDetail();
+        if (selectedIssue.value?.pipelineId === pipelineId) closeIssueDetail();
+      } catch (err: any) {
         failed.push(friendlyError(err, `删除 ${pipelineId} 失败`));
       }
     }
@@ -609,10 +604,6 @@ function jumpIssueToCompare(issue: IssueReplayItem) {
       mode: "local",
     },
   });
-}
-
-function latestTime(item: Partial<RecordItem>) {
-  return `${item.updated_at || item.finished_at || item.started_at || item.queued_at || ""}`;
 }
 
 function recordLead(item: Partial<RecordItem>) {
@@ -952,5 +943,4 @@ onMounted(async () => {
     flex-direction: column;
   }
 }
-
 </style>

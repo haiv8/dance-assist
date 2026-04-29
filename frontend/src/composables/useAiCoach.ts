@@ -32,7 +32,7 @@ export function useAiCoach() {
     try {
       aiCoach.value = await getAiCoachReport(pipelineId);
     } catch (err: any) {
-      aiCoachError.value = friendlyError(err, "AI解读生成失败");
+      aiCoachError.value = friendlyError(err, "AI 解读生成失败");
     } finally {
       aiCoachLoading.value = false;
     }

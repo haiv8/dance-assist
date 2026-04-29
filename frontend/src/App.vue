@@ -4,40 +4,74 @@ import { RouterLink, RouterView, useRoute } from "vue-router";
 
 const route = useRoute();
 
-const navItems = [
+type NavIcon = "folder" | "play" | "records" | "status";
+
+interface NavItem {
+  to: string;
+  label: string;
+  description: string;
+  topbarCopy: string;
+  icon: NavIcon;
+  aliases?: string[];
+}
+
+const navItems: NavItem[] = [
   {
     to: "/upload",
     label: "素材库",
-    eyebrow: "Library",
-    copy: "管理教师示范与学员练习素材。",
+    description: "教师 / 学员视频",
+    topbarCopy: "整理教师示范和学员练习视频，准备后续动作分析。",
+    icon: "folder",
   },
   {
     to: "/compare",
     label: "开始分析",
-    eyebrow: "Analyze",
-    copy: "发起动作对照分析并查看结果。",
+    description: "选择视频并运行",
+    topbarCopy: "选择一组视频，运行姿态提取、动作对齐和评分分析。",
+    icon: "play",
   },
   {
     to: "/records",
     label: "分析记录",
-    eyebrow: "Records",
-    copy: "统一查看任务、报告与问题片段。",
+    description: "报告与问题片段",
+    topbarCopy: "查看历史报告、评分说明、问题片段和训练建议。",
+    icon: "records",
+    aliases: ["/tasks", "/reports", "/issues"],
   },
   {
     to: "/settings",
-    label: "系统设置",
-    eyebrow: "Settings",
-    copy: "检查环境状态与维护本地服务。",
+    label: "系统状态",
+    description: "模型、磁盘和服务",
+    topbarCopy: "检查模型文件、运行目录、磁盘空间和本地服务状态。",
+    icon: "status",
   },
 ];
 
-const currentSection = computed(() => {
-  const path = route.path;
-  if (path.startsWith("/tasks") || path.startsWith("/reports") || path.startsWith("/issues")) {
-    return navItems[2];
-  }
-  return navItems.find((item) => path.startsWith(item.to)) ?? navItems[1];
-});
+const iconPaths: Record<NavIcon, string[]> = {
+  folder: [
+    "M3.75 6.75A2.25 2.25 0 0 1 6 4.5h3.15c.58 0 1.12.28 1.46.75l.64.9H18A2.25 2.25 0 0 1 20.25 9v6.75A2.25 2.25 0 0 1 18 18H6a2.25 2.25 0 0 1-2.25-2.25v-9Z",
+    "M5.25 9h13.5",
+  ],
+  play: [
+    "M7.5 5.8v12.4c0 .62.68 1 1.21.67l9.7-6.2a.8.8 0 0 0 0-1.34l-9.7-6.2A.8.8 0 0 0 7.5 5.8Z",
+    "M4.5 12a7.5 7.5 0 1 0 15 0 7.5 7.5 0 0 0-15 0Z",
+  ],
+  records: [
+    "M5.25 5.25h13.5v13.5H5.25V5.25Z",
+    "M8.25 9h7.5M8.25 12h7.5M8.25 15h4.5",
+  ],
+  status: [
+    "M4.5 13.5h3l2.1-5.25 3.15 8.25 2.1-4.5h4.65",
+    "M12 21a9 9 0 1 0-9-9",
+  ],
+};
+
+function isActiveNav(item: NavItem) {
+  const paths = [item.to, ...(item.aliases || [])];
+  return paths.some((path) => route.path.startsWith(path));
+}
+
+const currentSection = computed(() => navItems.find((item) => isActiveNav(item)) ?? navItems[1]);
 
 const shellClasses = computed(() => [
   "app-shell",
@@ -48,46 +82,54 @@ const shellClasses = computed(() => [
 
 <template>
   <div :class="shellClasses">
-    <aside class="sidebar compact-sidebar">
-      <div class="brand-block editorial-brand compact-brand">
+    <aside class="sidebar compact-sidebar app-sidebar">
+      <div class="brand-block compact-brand">
         <div class="brand-mark">DA</div>
         <div class="brand-copy-block">
           <span class="brand-kicker">Dance Assist</span>
-          <h1>舞蹈动作分析工作台</h1>
-          <p class="brand-copy">本地桌面版</p>
+          <h1>舞蹈动作分析</h1>
+          <p class="brand-copy">本地视频复盘工具</p>
         </div>
       </div>
 
-      <nav class="nav-list">
+      <nav class="nav-list app-nav" aria-label="主导航">
         <RouterLink
           v-for="item in navItems"
           :key="item.to"
           :to="item.to"
           class="nav-item"
-          :class="{ active: route.path.startsWith(item.to) || (item.to === '/records' && (route.path.startsWith('/tasks') || route.path.startsWith('/reports') || route.path.startsWith('/issues'))) }"
+          :class="{ active: isActiveNav(item) }"
         >
-          <span class="nav-label">{{ item.label }}</span>
-          <span class="nav-kicker">{{ item.eyebrow }}</span>
+          <span class="nav-active-bar" aria-hidden="true"></span>
+          <span class="nav-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" focusable="false">
+              <path
+                v-for="path in iconPaths[item.icon]"
+                :key="path"
+                :d="path"
+              />
+            </svg>
+          </span>
+          <span class="nav-copy">
+            <span class="nav-label">{{ item.label }}</span>
+            <span class="nav-description">{{ item.description }}</span>
+          </span>
         </RouterLink>
       </nav>
 
-      <div class="sidebar-note editorial-note compact-note">
-        <span class="status-pill online">本地服务在线</span>
-        <div class="note-metrics">
-          <div class="note-metric">
-            <span>当前区域</span>
-            <strong>{{ currentSection.label }}</strong>
-          </div>
-        </div>
-      </div>
+      <RouterLink class="sidebar-note compact-note workspace-note" to="/settings">
+        <span class="workspace-note-title">本地工作台</span>
+        <span class="workspace-note-copy">点击进入系统状态检查</span>
+        <span class="workspace-note-current">当前：{{ currentSection.label }}</span>
+      </RouterLink>
     </aside>
 
     <div class="shell-main">
-      <header class="topbar simple-topbar editorial-topbar compact-topbar">
+      <header class="topbar simple-topbar compact-topbar app-topbar">
         <div class="topbar-copy-block">
-          <span class="topbar-kicker">Workspace</span>
+          <span class="topbar-kicker">当前位置</span>
           <h2>{{ currentSection.label }}</h2>
-          <p class="helper-text topbar-copy">{{ currentSection.copy }}</p>
+          <p class="helper-text topbar-copy">{{ currentSection.topbarCopy }}</p>
         </div>
       </header>
 

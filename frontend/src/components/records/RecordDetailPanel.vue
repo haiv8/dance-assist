@@ -3,7 +3,7 @@
     <div class="panel-head compact-head">
       <div>
         <h2>记录详情</h2>
-        <p class="helper-text">主要动作集中在这里，避免为同一条记录切换多个菜单。</p>
+        <p class="helper-text">主要动作信息集中在这里，避免为同一条记录切换多个菜单。</p>
       </div>
       <div class="action-row">
         <button class="ghost-button" :disabled="!canCancel || canceling" @click="$emit('cancel')">
@@ -16,7 +16,7 @@
           {{ copying ? "已复制" : "复制任务 ID" }}
         </button>
         <button class="secondary-button" :disabled="aiCoachLoading || item.status !== 'done'" @click="$emit('loadAi')">
-          {{ aiCoachLoading ? "AI生成中..." : "AI解读" }}
+          {{ aiCoachLoading ? "AI 生成中..." : "AI 解读" }}
         </button>
         <button class="secondary-button" :disabled="!canOpenCompare" @click="$emit('openCompare')">打开动作分析</button>
       </div>

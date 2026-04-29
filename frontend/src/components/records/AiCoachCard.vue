@@ -1,7 +1,7 @@
 <template>
   <div class="list-item-card ai-record-card" v-if="aiCoach || aiCoachError">
     <div class="record-card-head">
-      <strong>AI助教解读</strong>
+      <strong>AI 助教解读</strong>
       <span v-if="aiCoach" class="tag neutral">{{ sourceText }}</span>
     </div>
     <span v-if="aiCoachError" class="helper-text">{{ aiCoachError }}</span>

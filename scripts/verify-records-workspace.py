@@ -63,11 +63,11 @@ def main() -> int:
     issue_map = {
         "pipeline_done_new": [
             {"id": "invalid_entry"},
-            {"id": "new_late", "sec": 2.2, "summary": "late issue"},
-            {"id": "new_early", "sec": 1.1, "summary": "early issue"},
+            {"id": "new_late", "sec": 2.2, "type": "pose_error", "severity": "high", "summary": "late issue"},
+            {"id": "new_early", "sec": 1.1, "type": "tempo", "severity": "medium", "summary": "early issue"},
         ],
         "pipeline_done_old": [
-            {"id": "old_issue", "sec": 3.0, "summary": "old issue"},
+            {"id": "old_issue", "sec": 3.0, "type": "confidence", "severity": "high", "summary": "old issue"},
             "bad issue payload",
         ],
     }
@@ -87,12 +87,16 @@ def main() -> int:
     assert_true("items" in workspace and "issues" in workspace, "workspace should include items and issues")
 
     done_new = next(item for item in workspace["items"] if item["pipeline_id"] == "pipeline_done_new")
-    assert_true(done_new["issue_count"] == 3, "completed record should be associated with normalized issues")
+    assert_true(done_new["issue_count"] == 2, "completed record should only count displayable issues")
 
     issue_ids = [issue.get("id") for issue in workspace["issues"]]
+    assert_true("invalid_entry" not in issue_ids, "issues missing summary/type/sec should not leak to frontend")
     assert_true("bad issue payload" not in issue_ids, "invalid issue entries should not crash or leak")
     assert_true(all(issue.get("pipeline_id") for issue in workspace["issues"]), "issues should include pipeline_id")
     assert_true(all(issue.get("pair_name") for issue in workspace["issues"]), "issues should include pair_name")
+    assert_true(all(issue.get("summary") for issue in workspace["issues"]), "issues should include summary")
+    assert_true(all(issue.get("type") for issue in workspace["issues"]), "issues should include type")
+    assert_true(all(issue.get("sec") is not None for issue in workspace["issues"]), "issues should include sec")
     assert_true(all("score_total" in issue for issue in workspace["issues"]), "issues should include score_total")
     assert_true(all("confidence_score" in issue for issue in workspace["issues"]), "issues should include confidence_score")
 
