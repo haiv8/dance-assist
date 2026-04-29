@@ -54,11 +54,11 @@
           <input
             v-model.trim="search"
             type="text"
-            :placeholder="activeTab === 'issues' ? '按报告名称或问题摘要搜索' : '按记录名称或任务 ID 搜索'"
+            :placeholder="activeTab === 'issues' ? '按报告名称或问题摘要搜索' : activeTab === 'projects' ? '按教师视频或项目名称搜索' : '按记录名称或任务 ID 搜索'"
           />
         </div>
 
-        <div class="field-block" v-if="activeTab !== 'issues'">
+        <div class="field-block" v-if="activeTab !== 'issues' && activeTab !== 'projects'">
           <label class="field-label">状态</label>
           <select v-model="statusFilter">
             <option value="all">全部状态</option>
@@ -70,7 +70,7 @@
           </select>
         </div>
 
-        <div class="field-block" v-else>
+        <div class="field-block" v-else-if="activeTab === 'issues'">
           <label class="field-label">问题类型</label>
           <select v-model="issueTypeFilter">
             <option value="all">全部类型</option>
@@ -81,15 +81,28 @@
           </select>
         </div>
 
+        <div class="field-block" v-else>
+          <label class="field-label">聚合方式</label>
+          <div class="counter-value">按教师视频</div>
+        </div>
+
         <div class="field-block compact-counter">
           <label class="field-label">结果数</label>
-          <div class="counter-value">{{ activeTab === "issues" ? filteredIssues.length : filteredRecords.length }}</div>
+          <div class="counter-value">{{ activeTab === "issues" ? filteredIssues.length : activeTab === "projects" ? filteredProjects.length : filteredRecords.length }}</div>
         </div>
       </div>
     </section>
 
     <section class="surface-card records-workspace">
-      <div class="records-table-head" v-if="activeTab !== 'issues'">
+      <div class="records-table-head project-table-head" v-if="activeTab === 'projects'">
+        <span>练习项目</span>
+        <span>次数</span>
+        <span>最近 / 最高</span>
+        <span>平均 / 问题</span>
+        <span>最近完成</span>
+      </div>
+
+      <div class="records-table-head" v-else-if="activeTab !== 'issues'">
         <span></span>
         <span>记录</span>
         <span>状态</span>
@@ -123,7 +136,7 @@
         </div>
       </div>
 
-      <div v-if="error" class="feedback-inline">{{ error }}</div>
+      <div v-if="error || (activeTab === 'projects' && projectError)" class="feedback-inline">{{ error || projectError }}</div>
 
       <div v-else-if="activeTab === 'issues' && issueLoading" class="feedback-state" data-tone="loading">
         <strong class="feedback-state-title">问题片段整理中</strong>
@@ -133,6 +146,16 @@
       <div v-else-if="activeTab === 'issues' && !filteredIssues.length" class="feedback-state" data-tone="empty">
         <strong class="feedback-state-title">当前筛选下没有问题片段</strong>
         <span class="feedback-state-copy">可以放宽筛选条件，或先回到开始分析页生成新的结果。</span>
+      </div>
+
+      <div v-else-if="activeTab === 'projects' && projectLoading" class="feedback-state" data-tone="loading">
+        <strong class="feedback-state-title">练习项目整理中</strong>
+        <span class="feedback-state-copy">正在按教师视频聚合同一舞蹈片段下的多次分析记录。</span>
+      </div>
+
+      <div v-else-if="activeTab === 'projects' && !filteredProjects.length" class="feedback-state" data-tone="empty">
+        <strong class="feedback-state-title">当前还没有练习项目</strong>
+        <span class="feedback-state-copy">完成至少一条分析记录后，系统会自动按教师视频生成练习项目。</span>
       </div>
 
       <div v-else-if="activeTab !== 'issues' && !filteredRecords.length" class="feedback-state" data-tone="empty">
@@ -154,6 +177,62 @@
         @jump-compare="jumpIssueToCompare"
         @delete-pipeline="deletePipeline"
       />
+
+      <div v-else-if="activeTab === 'projects'" class="project-list">
+        <article v-for="project in filteredProjects" :key="project.teacher_video_id" class="project-card">
+          <button type="button" class="project-row" :class="{ active: selectedProjectId === project.teacher_video_id }" @click="toggleProject(project.teacher_video_id)">
+            <div class="project-main">
+              <strong>{{ project.teacher_filename || project.teacher_video_id }}</strong>
+              <p class="helper-text">同一教师示范下的练习记录：{{ project.analysis_count }} 次</p>
+            </div>
+            <div class="project-metric">
+              <span>最近分</span>
+              <strong>{{ scoreText(project.latest_score) }}</strong>
+            </div>
+            <div class="project-metric">
+              <span>最高分</span>
+              <strong>{{ scoreText(project.best_score) }}</strong>
+            </div>
+            <div class="project-metric">
+              <span>平均 / 问题</span>
+              <strong>{{ scoreText(project.avg_score) }} / {{ project.issue_total }}</strong>
+            </div>
+            <div class="project-metric">
+              <span>最近完成</span>
+              <strong>{{ formatDate(project.latest_finished_at) }}</strong>
+            </div>
+          </button>
+
+          <div v-if="selectedProjectId === project.teacher_video_id" class="project-detail">
+            <div v-if="projectDetailLoading" class="feedback-state" data-tone="loading">
+              <strong class="feedback-state-title">项目详情加载中</strong>
+              <span class="feedback-state-copy">正在读取该教师视频下的历史练习记录。</span>
+            </div>
+            <template v-else-if="projectDetail">
+              <div class="project-trend">
+                <div v-for="(point, index) in projectDetail.trend" :key="point.pipeline_id || `${point.finished_at || 'trend'}_${index}`" class="trend-point">
+                  <span class="trend-bar" :style="{ height: `${trendBarHeight(point.score_total)}%` }"></span>
+                  <small>{{ scoreText(point.score_total) }}</small>
+                </div>
+              </div>
+              <div class="project-records">
+                <button
+                  v-for="record in projectDetail.records"
+                  :key="record.pipeline_id"
+                  type="button"
+                  class="project-record-row"
+                  @click="openProjectRecord(record.pipeline_id)"
+                >
+                  <span>{{ record.pair_name || compactPipelineId(record.pipeline_id) }}</span>
+                  <strong>{{ scoreText(record.score_total) }}</strong>
+                  <small>{{ confidenceText(record.confidence_score) }} / {{ record.issue_count }} 个问题</small>
+                  <small>{{ formatDate(record.finished_at || record.updated_at) }}</small>
+                </button>
+              </div>
+            </template>
+          </div>
+        </article>
+      </div>
 
       <div v-else class="records-list dense-list">
         <div v-for="item in filteredRecords" :key="item.pipeline_id" class="record-shell">
@@ -227,6 +306,7 @@
 import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { deletePipelineTask, getPipelineResultSummary } from "../api/pipelines";
+import { getPracticeProject, getPracticeProjects } from "../api/records";
 import IssueList from "../components/records/IssueList.vue";
 import RecordDetailPanel from "../components/records/RecordDetailPanel.vue";
 import { useAiCoach } from "../composables/useAiCoach";
@@ -240,10 +320,12 @@ import type {
   IssueReplayItem,
   PipelineResultSummaryResponse,
   PipelineStatusType,
+  PracticeProjectDetailResponse,
+  PracticeProjectItem,
   RecordWorkspaceItem,
 } from "../types/video";
 
-type WorkspaceTab = "all" | "running" | "completed" | "issues";
+type WorkspaceTab = "all" | "running" | "completed" | "projects" | "issues";
 type RecordItem = RecordWorkspaceItem;
 
 const router = useRouter();
@@ -253,6 +335,7 @@ const tabs: Array<{ key: WorkspaceTab; label: string }> = [
   { key: "all", label: "全部记录" },
   { key: "running", label: "进行中" },
   { key: "completed", label: "已完成" },
+  { key: "projects", label: "练习项目" },
   { key: "issues", label: "问题片段" },
 ];
 
@@ -269,6 +352,12 @@ const activeTab = ref<WorkspaceTab>("all");
 const search = ref("");
 const statusFilter = ref<PipelineStatusType | "all">("all");
 const issueTypeFilter = ref("all");
+const projects = ref<PracticeProjectItem[]>([]);
+const projectLoading = ref(false);
+const projectError = ref("");
+const selectedProjectId = ref("");
+const projectDetail = ref<PracticeProjectDetailResponse | null>(null);
+const projectDetailLoading = ref(false);
 
 const selectedRecordId = ref("");
 const selectedIssueId = ref("");
@@ -302,6 +391,14 @@ const selectedPipelineIds = ref<Set<string>>(new Set());
 const runningCount = computed(() => records.value.filter((item) => item.status === "pending" || item.status === "running").length);
 const completedCount = computed(() => records.value.filter((item) => item.status === "done").length);
 
+const filteredProjects = computed(() => {
+  const keyword = search.value.trim().toLowerCase();
+  return projects.value.filter((item) => {
+    const text = `${item.teacher_filename || ""} ${item.teacher_video_id || ""} ${item.latest_pipeline_id || ""}`.toLowerCase();
+    return !keyword || text.includes(keyword);
+  });
+});
+
 const filteredRecords = computed(() => {
   const keyword = search.value.trim().toLowerCase();
   return records.value.filter((item) => {
@@ -329,6 +426,7 @@ const filteredIssues = computed(() => {
 });
 
 const visiblePipelineIds = computed(() => {
+  if (activeTab.value === "projects") return [];
   const ids = activeTab.value === "issues"
     ? filteredIssues.value.map((item) => item.pipelineId)
     : filteredRecords.value.map((item) => item.pipeline_id);
@@ -389,7 +487,7 @@ function toggleSelectAllVisible() {
 }
 
 function parseTab(value: unknown): WorkspaceTab {
-  if (value === "running" || value === "completed" || value === "issues" || value === "all") return value;
+  if (value === "running" || value === "completed" || value === "projects" || value === "issues" || value === "all") return value;
   return "all";
 }
 
@@ -411,8 +509,22 @@ async function refreshWorkspace() {
   await loadWorkspace();
 }
 
+async function loadProjects() {
+  projectLoading.value = true;
+  projectError.value = "";
+  try {
+    const data = await getPracticeProjects(200);
+    projects.value = data.items;
+  } catch (err: any) {
+    projectError.value = friendlyError(err, "练习项目加载失败");
+  } finally {
+    projectLoading.value = false;
+  }
+}
+
 async function loadWorkspace() {
   await loadRecordsWorkspace(100);
+  await loadProjects();
   if (!error.value) {
     await hydrateSelectionFromRoute();
   }
@@ -424,6 +536,7 @@ async function hydrateSelectionFromRoute() {
 
   const pipelineId = routeQueryString(route.query.pipeline);
   const sec = Number(routeQueryString(route.query.sec));
+  const projectId = routeQueryString(route.query.project);
 
   if (tab === "issues") {
     if (pipelineId) {
@@ -431,6 +544,13 @@ async function hydrateSelectionFromRoute() {
       if (hit) {
         await openIssue(hit.id);
       }
+    }
+    return;
+  }
+
+  if (tab === "projects") {
+    if (projectId && projects.value.some((item) => item.teacher_video_id === projectId)) {
+      await openProject(projectId);
     }
     return;
   }
@@ -470,6 +590,44 @@ async function toggleRecord(pipelineId: string) {
     return;
   }
   await openRecord(pipelineId);
+}
+
+async function openProject(projectId: string) {
+  selectedProjectId.value = projectId;
+  selectedRecordId.value = "";
+  selectedIssueId.value = "";
+  projectDetailLoading.value = true;
+  projectError.value = "";
+  try {
+    projectDetail.value = await getPracticeProject(projectId, 200);
+  } catch (err: any) {
+    projectDetail.value = null;
+    projectError.value = friendlyError(err, "练习项目详情加载失败");
+  } finally {
+    projectDetailLoading.value = false;
+  }
+}
+
+function closeProject() {
+  selectedProjectId.value = "";
+  projectDetail.value = null;
+}
+
+async function toggleProject(projectId: string) {
+  if (projectId === selectedProjectId.value && projectDetail.value) {
+    closeProject();
+    return;
+  }
+  void router.replace({ path: "/records", query: { ...route.query, tab: "projects", project: projectId } });
+  await openProject(projectId);
+}
+
+function openProjectRecord(pipelineId?: string | null) {
+  if (!pipelineId) return;
+  statusFilter.value = "all";
+  void router.replace({ path: "/records", query: { pipeline: pipelineId, tab: "completed" } });
+  activeTab.value = "completed";
+  void openRecord(pipelineId);
 }
 
 async function openIssue(issueId: string) {
@@ -527,6 +685,7 @@ async function deletePipeline(pipelineId: string) {
     return;
   }
   removePipeline(pipelineId);
+  void loadProjects();
   const nextSelection = new Set(selectedPipelineIds.value);
   nextSelection.delete(pipelineId);
   setSelectedPipelineIds(nextSelection);
@@ -571,6 +730,7 @@ async function deleteSelectedPipelines() {
   if (failed.length) {
     error.value = `有 ${failed.length} 条记录删除失败：${failed[0]}`;
   }
+  void loadProjects();
 }
 
 function openSelectedInCompare() {
@@ -664,6 +824,12 @@ function scoreText(value?: number | string | null) {
   return num.toFixed(1);
 }
 
+function trendBarHeight(value?: number | string | null) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return 8;
+  return Math.max(8, Math.min(100, num));
+}
+
 function formatDate(value?: string | null) {
   if (!value) return "--";
   const date = new Date(value);
@@ -680,7 +846,7 @@ watch(
 );
 
 watch(
-  () => [route.query.pipeline, route.query.sec, route.query.tab],
+  () => [route.query.pipeline, route.query.sec, route.query.tab, route.query.project],
   async () => {
     if (!records.value.length) return;
     await hydrateSelectionFromRoute();
@@ -801,6 +967,10 @@ onMounted(async () => {
 
 .issue-table-head {
   grid-template-columns: 36px minmax(0, 1.8fr) 140px 120px 220px;
+}
+
+.project-table-head {
+  grid-template-columns: minmax(0, 1.8fr) 120px 160px 160px 220px;
 }
 
 .bulk-action-bar {
@@ -926,11 +1096,125 @@ onMounted(async () => {
   background: rgba(180, 35, 24, 0.08);
 }
 
+.project-list {
+  display: grid;
+  gap: 10px;
+}
+
+.project-card {
+  display: grid;
+  gap: 10px;
+}
+
+.project-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.8fr) 120px 160px 160px 220px;
+  gap: 12px;
+  align-items: center;
+  width: 100%;
+  padding: 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: rgba(255, 255, 255, 0.98);
+  color: var(--text);
+  text-align: left;
+  box-shadow: none;
+}
+
+.project-row:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: rgba(15, 143, 179, 0.22);
+  box-shadow: 0 10px 20px rgba(15, 23, 42, 0.04);
+}
+
+.project-row.active {
+  border-color: rgba(15, 143, 179, 0.32);
+  background:
+    radial-gradient(circle at top right, rgba(15, 143, 179, 0.1), transparent 32%),
+    linear-gradient(180deg, rgba(248, 252, 255, 0.98) 0%, rgba(255, 255, 255, 0.98) 100%);
+}
+
+.project-main,
+.project-metric {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.project-main p {
+  margin: 0;
+}
+
+.project-metric span,
+.project-record-row small {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.project-detail {
+  display: grid;
+  gap: 14px;
+  padding: 14px;
+  border-radius: 18px;
+  border: 1px solid rgba(15, 143, 179, 0.14);
+  background: rgba(248, 252, 255, 0.8);
+}
+
+.project-trend {
+  display: flex;
+  align-items: end;
+  gap: 8px;
+  min-height: 120px;
+  padding: 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  background: rgba(255, 255, 255, 0.88);
+}
+
+.trend-point {
+  display: grid;
+  grid-template-rows: 1fr auto;
+  align-items: end;
+  justify-items: center;
+  gap: 6px;
+  width: 34px;
+  min-height: 96px;
+}
+
+.trend-bar {
+  width: 100%;
+  min-height: 8px;
+  border-radius: 999px 999px 6px 6px;
+  background: linear-gradient(180deg, var(--accent) 0%, #eb8d56 100%);
+}
+
+.project-records {
+  display: grid;
+  gap: 8px;
+}
+
+.project-record-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) 90px 140px 180px;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--text);
+  text-align: left;
+  box-shadow: none;
+}
+
 @media (max-width: 1180px) {
   .records-kpi-row,
   .records-toolbar-grid,
   .records-table-head,
-  .dense-row {
+  .dense-row,
+  .project-row,
+  .project-record-row {
     grid-template-columns: 1fr;
   }
 

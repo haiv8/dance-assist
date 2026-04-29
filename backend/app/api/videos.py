@@ -8,10 +8,13 @@ from app.schemas.dto import (
     VideoActionResponse,
     VideoItem,
     VideoListResponse,
+    VideoQualityPairRequest,
+    VideoQualityResponse,
     VideoRenameRequest,
     VideoUploadResponse,
 )
 from app.services.storage import delete_video, list_videos, rename_video, save_upload
+from app.services.video_quality import check_video_pair_quality, check_video_quality
 
 router = APIRouter(prefix="/videos", tags=["videos"])
 
@@ -30,6 +33,21 @@ async def upload_video(
 async def get_videos(role: RoleQueryType = "all"):
     items = list_videos(role=role)
     return VideoListResponse(items=items)
+
+
+@router.get("/{video_id}/quality", response_model=VideoQualityResponse)
+async def get_video_quality(video_id: str, role: RoleType | None = None):
+    return VideoQualityResponse(**check_video_quality(video_id=video_id, role=role))
+
+
+@router.post("/quality-check-pair", response_model=VideoQualityResponse)
+async def check_video_quality_pair(payload: VideoQualityPairRequest):
+    return VideoQualityResponse(
+        **check_video_pair_quality(
+            teacher_video_id=payload.teacher_video_id,
+            user_video_id=payload.user_video_id,
+        )
+    )
 
 
 @router.patch("/{video_id}", response_model=VideoActionResponse)

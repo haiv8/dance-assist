@@ -44,6 +44,21 @@ class VideoActionResponse(BaseModel):
     item: VideoItem | None = None
 
 
+class VideoQualityPairRequest(BaseModel):
+    teacher_video_id: str
+    user_video_id: str
+
+
+class VideoQualityResponse(BaseModel):
+    ok: bool
+    level: Literal["good", "warning", "error"]
+    summary: str
+    checks: list[dict] = Field(default_factory=list)
+    teacher_meta: dict | None = None
+    user_meta: dict | None = None
+    recommendations: list[str] = Field(default_factory=list)
+
+
 class PipelineRunRequest(BaseModel):
     teacher_video_id: str
     user_video_id: str
@@ -283,6 +298,41 @@ class RecordWorkspaceResponse(BaseModel):
     total: int
     issue_total: int
     limit: int
+
+
+class PracticeProjectItem(BaseModel):
+    teacher_video_id: str
+    teacher_filename: str | None = None
+    analysis_count: int = 0
+    latest_score: float | None = None
+    best_score: float | None = None
+    avg_score: float | None = None
+    latest_confidence: float | None = None
+    latest_finished_at: str | None = None
+    issue_total: int = 0
+    latest_pipeline_id: str | None = None
+
+
+class PracticeProjectListResponse(BaseModel):
+    items: list[PracticeProjectItem]
+    total: int
+    limit: int
+
+
+class PracticeProjectTrendItem(BaseModel):
+    pipeline_id: str | None = None
+    finished_at: str | None = None
+    score_total: float | None = None
+    score_pose: float | None = None
+    score_tempo: float | None = None
+    confidence_score: float | None = None
+    issue_count: int = 0
+
+
+class PracticeProjectDetailResponse(BaseModel):
+    project: PracticeProjectItem
+    records: list[RecordWorkspaceItem] = Field(default_factory=list)
+    trend: list[PracticeProjectTrendItem] = Field(default_factory=list)
 
 
 class AiCoachRequest(BaseModel):

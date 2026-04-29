@@ -84,8 +84,35 @@
             <span>覆盖历史结果</span>
           </label>
 
+          <div v-if="teacherId && userId" class="quality-check-card" :data-level="qualityCheck?.level || 'checking'">
+            <div class="quality-check-head">
+              <div>
+                <span class="quality-check-eyebrow">视频质量检查</span>
+                <strong>{{ qualityCheckTitle }}</strong>
+              </div>
+              <span class="quality-badge">{{ qualityCheckBadge }}</span>
+            </div>
+
+            <div v-if="qualityCheckLoading" class="helper-text">正在读取视频时长、分辨率和帧率...</div>
+            <template v-else-if="qualityCheck">
+              <div class="quality-meta-grid">
+                <div>
+                  <span>教师视频</span>
+                  <strong>{{ formatQualityMeta(qualityCheck.teacher_meta) }}</strong>
+                </div>
+                <div>
+                  <span>学员视频</span>
+                  <strong>{{ formatQualityMeta(qualityCheck.user_meta) }}</strong>
+                </div>
+              </div>
+              <ul class="quality-recommendations">
+                <li v-for="item in qualityCheckRecommendations" :key="item">{{ item }}</li>
+              </ul>
+            </template>
+          </div>
+
           <div class="action-row rail-actions">
-            <button :disabled="!teacherId || !userId || analyzing" @click="startAnalysis">
+            <button :disabled="!canStartAnalysis" @click="startAnalysis">
               {{ analyzing ? "分析进行中..." : "发起分析" }}
             </button>
             <button class="ghost-button" :disabled="!canCancelCurrentPipeline || cancelingPipeline" @click="cancelCurrentPipeline">
@@ -401,7 +428,7 @@ import {
 } from "../api/pipelines";
 import { normalizedConfidenceIssues, normalizedConfidenceSummary } from "../utils/confidence";
 import { friendlyError } from "../utils/errors";
-import { listVideos } from "../api/videos";
+import { checkVideoPairQuality, listVideos } from "../api/videos";
 import type {
   AiCoachResponse,
   PipelineFrameRangeResponse,
@@ -409,6 +436,8 @@ import type {
   PipelineRunResponse,
   PipelineStatusResponse,
   PipelineStatusType,
+  VideoQualityMeta,
+  VideoQualityResponse,
   VideoItem,
 } from "../types/video";
 
@@ -437,9 +466,12 @@ const aiCoachError = ref("");
 const analysisMode = ref<"overall" | "local">("overall");
 const frameDetailCache = ref<Record<number, Record<string, any>>>({});
 const frameDetailLoading = ref(false);
+const qualityCheck = ref<VideoQualityResponse | null>(null);
+const qualityCheckLoading = ref(false);
 const FRAME_WINDOW_RADIUS = 12;
 const REVIEW_PLAYBACK_RATE = 0.5;
 let pollTimer: number | null = null;
+let qualityCheckToken = 0;
 
 const teacherItems = computed(() => items.value.filter((item) => item.role === "teacher"));
 const userItems = computed(() => items.value.filter((item) => item.role === "user"));
@@ -473,6 +505,26 @@ const analysisFeedbackText = computed(() => {
   return analysisHint.value;
 });
 const hasSelectedPair = computed(() => Boolean(teacherId.value && userId.value));
+const canStartAnalysis = computed(() => {
+  if (!teacherId.value || !userId.value || analyzing.value || qualityCheckLoading.value) return false;
+  return qualityCheck.value?.level !== "error";
+});
+const qualityCheckTitle = computed(() => {
+  if (qualityCheckLoading.value) return "正在检查";
+  if (!qualityCheck.value) return "等待检查结果";
+  return qualityCheck.value.summary || "检查完成";
+});
+const qualityCheckBadge = computed(() => {
+  if (qualityCheckLoading.value) return "检查中";
+  if (qualityCheck.value?.level === "good") return "适合分析";
+  if (qualityCheck.value?.level === "warning") return "可继续，有提醒";
+  if (qualityCheck.value?.level === "error") return "请更换视频";
+  return "待检查";
+});
+const qualityCheckRecommendations = computed(() => {
+  const list = qualityCheck.value?.recommendations || [];
+  return list.length ? list.slice(0, 3) : ["检查通过后再发起分析，可以减少拍摄质量对评分理解的干扰。"];
+});
 const hasActivePipeline = computed(() => analyzing.value || pipelineStatus.value === "pending" || pipelineStatus.value === "running");
 const workflowSteps = computed<Array<{ key: string; index: string; title: string; copy: string; state: WorkflowStepState }>>(() => {
   const selectDone = hasSelectedPair.value;
@@ -672,6 +724,57 @@ function formatSecondsMaybe(value: unknown) {
   const num = Number(value);
   if (!Number.isFinite(num)) return "--";
   return `${num.toFixed(2)}s`;
+}
+
+function formatQualityMeta(meta?: VideoQualityMeta | null) {
+  if (!meta) return "暂无元信息";
+  if (meta.readable === false) return meta.error || "无法读取";
+  const durationText = formatSecondsMaybe(meta.duration_sec);
+  const width = Number(meta.width);
+  const height = Number(meta.height);
+  const resolution = Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0 ? `${width}x${height}` : "--";
+  const fps = Number(meta.fps);
+  const fpsText = Number.isFinite(fps) && fps > 0 ? `${fps.toFixed(1)}fps` : "--";
+  return `${durationText} / ${resolution} / ${fpsText}`;
+}
+
+async function refreshQualityCheck() {
+  const teacher = teacherId.value;
+  const user = userId.value;
+  qualityCheckToken += 1;
+  const token = qualityCheckToken;
+  qualityCheck.value = null;
+  if (!teacher || !user) {
+    qualityCheckLoading.value = false;
+    return;
+  }
+
+  qualityCheckLoading.value = true;
+  try {
+    const response = await checkVideoPairQuality({
+      teacherVideoId: teacher,
+      userVideoId: user,
+    });
+    if (token === qualityCheckToken) {
+      qualityCheck.value = response;
+    }
+  } catch (e: any) {
+    if (token === qualityCheckToken) {
+      qualityCheck.value = {
+        ok: false,
+        level: "error",
+        summary: friendlyError(e, "视频质量检查失败"),
+        checks: [],
+        teacher_meta: null,
+        user_meta: null,
+        recommendations: ["请确认本地后端和 ffprobe 可用，或重新选择视频后再试。"],
+      };
+    }
+  } finally {
+    if (token === qualityCheckToken) {
+      qualityCheckLoading.value = false;
+    }
+  }
 }
 
 function timingOffsetText(value: unknown) {
@@ -1060,6 +1163,10 @@ async function pollStatus(id: string) {
 
 async function startAnalysis() {
   if (!teacherId.value || !userId.value) return;
+  if (qualityCheck.value?.level === "error") {
+    error.value = "视频质量检查未通过，请更换视频后再发起分析。";
+    return;
+  }
   analyzing.value = true;
   result.value = null;
   aiCoach.value = null;
@@ -1198,6 +1305,7 @@ watch([teacherId, userId], () => {
   pipelineMessage.value = "";
   cancelRequested.value = false;
   routeSeekSec.value = null;
+  void refreshQualityCheck();
 });
 
 watch([analysisMode, currentFrameIndex, result], ([mode, frame]) => {
@@ -1473,6 +1581,87 @@ onBeforeUnmount(() => {
 
 .analysis-config-card .simple-check:focus-within .check-mark {
   box-shadow: 0 0 0 4px rgba(15, 143, 179, 0.12);
+}
+
+.quality-check-card {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 18px;
+  background: rgba(248, 250, 252, 0.78);
+}
+
+.quality-check-card[data-level="good"] {
+  border-color: rgba(21, 128, 61, 0.18);
+  background: rgba(240, 253, 244, 0.72);
+}
+
+.quality-check-card[data-level="warning"] {
+  border-color: rgba(226, 109, 61, 0.24);
+  background: rgba(255, 247, 237, 0.72);
+}
+
+.quality-check-card[data-level="error"] {
+  border-color: rgba(220, 38, 38, 0.22);
+  background: rgba(254, 242, 242, 0.72);
+}
+
+.quality-check-head,
+.quality-meta-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.quality-check-head {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+}
+
+.quality-check-eyebrow,
+.quality-meta-grid span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.quality-check-head strong,
+.quality-meta-grid strong {
+  display: block;
+  margin-top: 3px;
+}
+
+.quality-badge {
+  padding: 6px 10px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--text);
+  font-size: 0.82rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.quality-meta-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.quality-meta-grid > div {
+  min-width: 0;
+}
+
+.quality-meta-grid strong {
+  overflow-wrap: anywhere;
+}
+
+.quality-recommendations {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 18px;
+  color: var(--muted);
 }
 
 .summary-row {

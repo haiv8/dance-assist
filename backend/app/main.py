@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.ai import router as ai_router
 from app.api.media import router as media_router
 from app.api.pipelines import router as pipelines_router
+from app.api.practice_projects import router as practice_projects_router
 from app.api.records import router as records_router
 from app.api.reports import router as reports_router
 from app.api.system import router as system_router
@@ -84,6 +85,7 @@ def create_app() -> FastAPI:
     app.include_router(pipelines_router, prefix=settings.API_PREFIX)
     app.include_router(ai_router, prefix=settings.API_PREFIX)
     app.include_router(records_router, prefix=settings.API_PREFIX)
+    app.include_router(practice_projects_router, prefix=settings.API_PREFIX)
     app.include_router(reports_router, prefix=settings.API_PREFIX)
     app.include_router(system_router, prefix=settings.API_PREFIX)
 
@@ -93,6 +95,7 @@ def create_app() -> FastAPI:
         app.include_router(pipelines_router, prefix=settings.API_V1_PREFIX)
         app.include_router(ai_router, prefix=settings.API_V1_PREFIX)
         app.include_router(records_router, prefix=settings.API_V1_PREFIX)
+        app.include_router(practice_projects_router, prefix=settings.API_V1_PREFIX)
         app.include_router(reports_router, prefix=settings.API_V1_PREFIX)
         app.include_router(system_router, prefix=settings.API_V1_PREFIX)
 

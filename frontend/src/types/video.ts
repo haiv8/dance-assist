@@ -30,6 +30,39 @@ export interface VideoActionResponse {
   item?: VideoItem | null;
 }
 
+export type VideoQualityLevel = "good" | "warning" | "error";
+
+export interface VideoQualityMeta {
+  video_id?: string | null;
+  role?: RoleType | null;
+  filename?: string | null;
+  size_bytes?: number | null;
+  duration_sec?: number | null;
+  width?: number | null;
+  height?: number | null;
+  fps?: number | null;
+  readable?: boolean | null;
+  error?: string | null;
+}
+
+export interface VideoQualityCheckItem {
+  key: string;
+  label: string;
+  level: VideoQualityLevel;
+  message: string;
+  value?: any;
+}
+
+export interface VideoQualityResponse {
+  ok: boolean;
+  level: VideoQualityLevel;
+  summary: string;
+  checks: VideoQualityCheckItem[];
+  teacher_meta?: VideoQualityMeta | null;
+  user_meta?: VideoQualityMeta | null;
+  recommendations: string[];
+}
+
 export type PipelineStatusType = "pending" | "running" | "done" | "failed" | "canceled";
 
 export interface PipelineRunRequest {
@@ -298,6 +331,41 @@ export interface RecordWorkspaceResponse {
   total: number;
   issue_total: number;
   limit: number;
+}
+
+export interface PracticeProjectItem {
+  teacher_video_id: string;
+  teacher_filename?: string | null;
+  analysis_count: number;
+  latest_score?: number | null;
+  best_score?: number | null;
+  avg_score?: number | null;
+  latest_confidence?: number | null;
+  latest_finished_at?: string | null;
+  issue_total: number;
+  latest_pipeline_id?: string | null;
+}
+
+export interface PracticeProjectTrendItem {
+  pipeline_id?: string | null;
+  finished_at?: string | null;
+  score_total?: number | null;
+  score_pose?: number | null;
+  score_tempo?: number | null;
+  confidence_score?: number | null;
+  issue_count: number;
+}
+
+export interface PracticeProjectListResponse {
+  items: PracticeProjectItem[];
+  total: number;
+  limit: number;
+}
+
+export interface PracticeProjectDetailResponse {
+  project: PracticeProjectItem;
+  records: RecordWorkspaceItem[];
+  trend: PracticeProjectTrendItem[];
 }
 
 export interface AiCoachPriorityIssue {
