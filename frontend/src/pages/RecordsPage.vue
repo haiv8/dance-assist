@@ -140,75 +140,20 @@
         <span class="feedback-state-copy">可以切换状态筛选，或发起一轮新的动作分析。</span>
       </div>
 
-      <div v-else-if="activeTab === 'issues'" class="records-list dense-list">
-        <div v-for="item in filteredIssues" :key="item.id" class="record-shell">
-          <div class="record-row-wrap">
-            <label class="row-check" :class="{ disabled: !canDeletePipelineId(item.pipelineId) }" @click.stop>
-              <input
-                type="checkbox"
-                :checked="selectedPipelineIds.has(item.pipelineId)"
-                :disabled="!canDeletePipelineId(item.pipelineId) || bulkDeleting || deletingId === item.pipelineId"
-                @change="togglePipelineSelection(item.pipelineId)"
-              />
-            </label>
-            <button
-              type="button"
-              class="record-row dense-row issue-dense-row"
-              :class="{ active: selectedIssueId === item.id }"
-              @click="toggleIssue(item.id)"
-            >
-            <div class="dense-col primary-col">
-              <strong>{{ issueTypeText(item.type) }}</strong>
-              <p class="helper-text">{{ item.summary }}</p>
-            </div>
-            <div class="dense-col">
-              <span class="tag" :class="severityTone(item.severity)">{{ severityText(item.severity) }}</span>
-            </div>
-            <div class="dense-col mono-col">{{ timeText(item.sec) }}</div>
-            <div class="dense-col">
-              <strong class="dense-name">{{ item.pairName || compactPipelineId(item.pipelineId) }}</strong>
-              <span class="helper-text">{{ formatDate(item.finishedAt) }}</span>
-            </div>
-            </button>
-          </div>
-
-          <div
-            v-if="selectedIssueId === item.id"
-            ref="detailPanelRef"
-            class="inline-detail"
-          >
-            <div class="panel-head compact-head">
-              <div>
-                <h2>问题回放</h2>
-                <p class="helper-text">这里保留最短路径操作，方便你马上回到所属记录或动作分析页。</p>
-              </div>
-              <div class="action-row">
-                <button class="secondary-button" type="button" @click="openIssueRecord(item)">打开所属记录</button>
-                <button class="secondary-button" type="button" @click="jumpIssueToCompare(item)">定位到动作分析</button>
-                <button class="ghost-button danger-button" type="button" :disabled="!canDeletePipelineId(item.pipelineId) || deletingId === item.pipelineId" @click="deletePipeline(item.pipelineId)">
-                  {{ deletingId === item.pipelineId ? "删除中..." : canDeletePipelineId(item.pipelineId) ? "删除记录" : "运行中不可删" }}
-                </button>
-              </div>
-            </div>
-
-            <div class="metric-row compact-stats">
-              <div class="metric-chip"><strong>问题类型</strong><span>{{ issueTypeText(item.type) }}</span></div>
-              <div class="metric-chip"><strong>定位时间</strong><span>{{ timeText(item.sec) }}</span></div>
-              <div class="metric-chip"><strong>优先级</strong><span>{{ severityText(item.severity) }}</span></div>
-            </div>
-
-            <div class="list-item-card">
-              <strong>问题摘要</strong>
-              <span class="helper-text">{{ item.summary }}</span>
-            </div>
-
-            <div class="list-item-card" v-if="item.action">
-              <strong>处理建议</strong>
-              <span class="helper-text">{{ item.action }}</span>
-            </div>
-          </div>
-        </div>
-      </div>
+      <IssueList
+        v-else-if="activeTab === 'issues'"
+        :issues="filteredIssues"
+        :selected-issue-id="selectedIssueId"
+        :selected-pipeline-ids="selectedPipelineIds"
+        :bulk-deleting="bulkDeleting"
+        :deleting-id="deletingId"
+        :can-delete-pipeline-id="canDeletePipelineId"
+        @toggle-issue="toggleIssue"
+        @toggle-selection="togglePipelineSelection"
+        @open-record="openIssueRecord"
+        @jump-compare="jumpIssueToCompare"
+        @delete-pipeline="deletePipeline"
+      />
 
       <div v-else class="records-list dense-list">
         <div v-for="item in filteredRecords" :key="item.pipeline_id" class="record-shell">
@@ -249,136 +194,31 @@
           <div
             v-if="selectedRecordId === item.pipeline_id"
             ref="detailPanelRef"
-            class="inline-detail"
           >
-            <div class="panel-head compact-head">
-              <div>
-                <h2>记录详情</h2>
-                <p class="helper-text">主要动作集中在这里，避免为同一条记录切换多个菜单。</p>
-              </div>
-              <div class="action-row">
-                <button class="ghost-button" :disabled="!canCancelSelectedRecord || cancelingId === item.pipeline_id" @click="cancelSelectedRecord">
-                  {{ cancelingId === item.pipeline_id ? "取消中..." : "取消任务" }}
-                </button>
-                <button class="ghost-button danger-button" :disabled="!canDeleteSelectedRecord || deletingId === item.pipeline_id" @click="deletePipeline(item.pipeline_id)">
-                  {{ deletingId === item.pipeline_id ? "删除中..." : "删除记录" }}
-                </button>
-                <button class="secondary-button" :disabled="copyingId === item.pipeline_id" @click="copyPipelineId(item.pipeline_id)">
-                  {{ copyingId === item.pipeline_id ? "已复制" : "复制任务 ID" }}
-                </button>
-                <button class="secondary-button" :disabled="aiCoachLoading || item.status !== 'done'" @click="loadDetailAiCoach(item.pipeline_id)">
-                  {{ aiCoachLoading ? "AI生成中..." : "AI解读" }}
-                </button>
-                <button class="secondary-button" :disabled="!canOpenSelectedInCompare" @click="openSelectedInCompare">打开动作分析</button>
-              </div>
-            </div>
-
-            <div v-if="detailLoading" class="feedback-state" data-tone="loading">
-              <strong class="feedback-state-title">详情加载中</strong>
-              <span class="feedback-state-copy">正在读取本条记录的摘要、输出文件和问题片段。</span>
-            </div>
-
-            <div v-else-if="detailError" class="feedback-state" data-tone="error">
-              <strong class="feedback-state-title">详情加载失败</strong>
-              <span class="feedback-state-copy">{{ detailError }}</span>
-            </div>
-
-            <div v-else-if="detail" class="detail-stack">
-              <div class="metric-row compact-stats">
-                <div class="metric-chip"><strong>状态</strong><span>{{ statusText(detail.status) }}</span></div>
-                <div class="metric-chip"><strong>阶段</strong><span>{{ stageText(detail.stage, detail.status) }}</span></div>
-                <div class="metric-chip"><strong>进度</strong><span>{{ progressPercent(detail.progress) }}%</span></div>
-              </div>
-
-              <div class="metric-row compact-stats">
-                <div class="metric-chip"><strong>总分</strong><span>{{ scoreText(detail.report?.score_0_100 ?? detail.report?.scores?.score_total ?? detail.score_total) }}</span></div>
-                <div class="metric-chip"><strong>动作</strong><span>{{ scoreText(detail.report?.scores?.score_pose ?? detail.score_pose) }}</span></div>
-                <div class="metric-chip"><strong>节奏</strong><span>{{ scoreText(detail.report?.scores?.score_tempo ?? detail.score_tempo) }}</span></div>
-              </div>
-
-              <div class="metric-row compact-stats">
-                <div class="metric-chip"><strong>可信度</strong><span>{{ detailConfidenceText }}</span></div>
-                <div class="metric-chip"><strong>开始时间</strong><span>{{ formatDate(detail.started_at || detail.queued_at) }}</span></div>
-                <div class="metric-chip"><strong>完成时间</strong><span>{{ formatDate(detail.finished_at || detail.updated_at) }}</span></div>
-              </div>
-
-              <div class="list-item-card ai-record-card" v-if="aiCoach || aiCoachError">
-                <div class="record-card-head">
-                  <strong>AI助教解读</strong>
-                  <span v-if="aiCoach" class="tag neutral">{{ aiCoachSourceText }}</span>
-                </div>
-                <span v-if="aiCoachError" class="helper-text">{{ aiCoachError }}</span>
-                <template v-if="aiCoach">
-                  <span class="helper-text">{{ aiCoach.summary }}</span>
-                  <div class="issue-chip-list" v-if="aiCoach.priority_issues.length">
-                    <button
-                      v-for="issue in aiCoach.priority_issues.slice(0, 3)"
-                      :key="`${issue.title}_${issue.time_hint}`"
-                      type="button"
-                      class="issue-chip"
-                    >
-                      {{ issue.time_hint ? `${issue.time_hint} · ` : "" }}{{ issue.title }}
-                    </button>
-                  </div>
-                  <span class="helper-text" v-if="aiCoach.practice_plan[0]">
-                    建议先练：{{ aiCoach.practice_plan[0].title }}，{{ aiCoach.practice_plan[0].duration_min }} 分钟。
-                  </span>
-                  <span class="helper-text" v-if="aiCoachFallbackHint">{{ aiCoachFallbackHint }}</span>
-                  <span class="helper-text" v-if="aiCoach.setup_hint">{{ aiCoach.setup_hint }}</span>
-                </template>
-              </div>
-
-              <div class="detail-columns">
-                <div class="detail-column">
-                  <div class="list-item-card" v-if="detailLeadText">
-                    <strong>整体摘要</strong>
-                    <span class="helper-text">{{ detailLeadText }}</span>
-                  </div>
-
-                  <div class="list-item-card" v-if="detailConfidenceSummaryText">
-                    <strong>可信度说明</strong>
-                    <span class="helper-text">{{ detailConfidenceSummaryText }}</span>
-                  </div>
-
-                  <div class="list-item-card" v-if="topJointSummary">
-                    <strong>重点关节</strong>
-                    <span class="helper-text">{{ topJointSummary }}</span>
-                  </div>
-                </div>
-
-                <div class="detail-column">
-                  <div class="list-item-card" v-if="detailIssues.length">
-                    <strong>问题片段</strong>
-                    <div class="issue-chip-list">
-                      <button
-                        v-for="issue in detailIssues.slice(0, 6)"
-                        :key="issue.id"
-                        type="button"
-                        class="issue-chip"
-                        @click="jumpIssueToCompare(issue)"
-                      >
-                        {{ issueTypeText(issue.type) }} · {{ timeText(issue.sec) }}
-                      </button>
-                    </div>
-                  </div>
-
-                  <div class="list-item-card" v-if="detailLinks.length">
-                    <strong>输出文件</strong>
-                    <div class="detail-links">
-                      <a
-                        v-for="link in detailLinks"
-                        :key="link.label"
-                        class="link-button secondary-button"
-                        :href="link.url"
-                        target="_blank"
-                      >
-                        {{ link.label }}
-                      </a>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
+            <RecordDetailPanel
+              :item="item"
+              :detail="detail"
+              :detail-loading="detailLoading"
+              :detail-error="detailError"
+              :issues="detailIssues"
+              :ai-coach="aiCoach"
+              :ai-coach-error="aiCoachError"
+              :ai-coach-loading="aiCoachLoading"
+              :ai-coach-source-text="aiCoachSourceText"
+              :ai-coach-fallback-hint="aiCoachFallbackHint"
+              :can-cancel="canCancelSelectedRecord"
+              :can-delete="canDeleteSelectedRecord"
+              :can-open-compare="canOpenSelectedInCompare"
+              :copying="copyingId === item.pipeline_id"
+              :deleting="deletingId === item.pipeline_id"
+              :canceling="cancelingId === item.pipeline_id"
+              @cancel="cancelSelectedRecord"
+              @delete="deletePipeline(item.pipeline_id)"
+              @copy="copyPipelineId(item.pipeline_id)"
+              @load-ai="loadDetailAiCoach(item.pipeline_id)"
+              @open-compare="openSelectedInCompare"
+              @jump-issue="jumpIssueToCompare"
+            />
           </div>
         </div>
       </div>
@@ -389,51 +229,26 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { getAiCoachReport } from "../api/ai";
-import { getRecordsWorkspace } from "../api/records";
-import { absMediaUrl } from "../api/http";
-import {
-  cancelPipeline,
-  deletePipelineTask,
-  getPipelineResultSummary,
-} from "../api/pipelines";
+import { deletePipelineTask, getPipelineResultSummary } from "../api/pipelines";
+import IssueList from "../components/records/IssueList.vue";
+import RecordDetailPanel from "../components/records/RecordDetailPanel.vue";
+import { useAiCoach } from "../composables/useAiCoach";
+import { isRunningTaskStatus, useRecordActions } from "../composables/useRecordActions";
+import { mapIssueItems, useRecordsWorkspace } from "../composables/useRecordsWorkspace";
 import { normalizedConfidenceSummary } from "../utils/confidence";
 import { focusDetailPanel } from "../utils/detailPanel";
 import { compactPipelineId } from "../utils/display";
-import { friendlyError, runningTaskDeleteMessage } from "../utils/errors";
+import { friendlyError } from "../utils/errors";
 import type {
-  AiCoachResponse,
+  IssueReplayItem,
   PipelineResultSummaryResponse,
   PipelineStatusType,
-  RecordWorkspaceIssueItem,
   RecordWorkspaceItem,
 } from "../types/video";
 
 type WorkspaceTab = "all" | "running" | "completed" | "issues";
 
 type RecordItem = RecordWorkspaceItem;
-
-type IssueReplayItem = {
-  id: string;
-  pipelineId: string;
-  pairName: string;
-  teacherVideoId?: string | null;
-  userVideoId?: string | null;
-  type: string;
-  severity: "high" | "medium" | "low";
-  sec: number;
-  frame?: number | null;
-  summary: string;
-  action?: string | null;
-  finishedAt?: string | null;
-  scoreTotal?: number | null;
-  confidenceScore?: number | null;
-};
-
-type DetailLinkItem = {
-  label: string;
-  url: string;
-};
 
 const router = useRouter();
 const route = useRoute();
@@ -445,10 +260,15 @@ const tabs: Array<{ key: WorkspaceTab; label: string }> = [
   { key: "issues", label: "问题片段" },
 ];
 
-const records = ref<RecordItem[]>([]);
-const loading = ref(false);
-const issueLoading = ref(false);
-const error = ref("");
+const {
+  records,
+  loading,
+  issueLoading,
+  error,
+  issueItems,
+  loadWorkspace: loadRecordsWorkspace,
+  removePipeline,
+} = useRecordsWorkspace();
 const activeTab = ref<WorkspaceTab>("all");
 const search = ref("");
 const statusFilter = ref<PipelineStatusType | "all">("all");
@@ -459,16 +279,28 @@ const selectedIssueId = ref("");
 const detail = ref<PipelineResultSummaryResponse | null>(null);
 const detailLoading = ref(false);
 const detailError = ref("");
-const aiCoach = ref<AiCoachResponse | null>(null);
-const aiCoachLoading = ref(false);
-const aiCoachError = ref("");
 const detailPanelRef = ref<HTMLElement | null>(null);
-const issueMap = ref<Record<string, IssueReplayItem[]>>({});
 
-const copyingId = ref("");
-const deletingId = ref("");
-const cancelingId = ref("");
-const bulkDeleting = ref(false);
+const {
+  aiCoach,
+  aiCoachLoading,
+  aiCoachError,
+  aiCoachSourceText,
+  aiCoachFallbackHint,
+  clearAiCoach,
+  loadAiCoach,
+} = useAiCoach();
+const {
+  copyingId,
+  deletingId,
+  cancelingId,
+  bulkDeleting,
+  actionError,
+  canDeletePipelineId,
+  copyPipelineId: copyRecordPipelineId,
+  cancelPipelineRecord,
+  deletePipelineRecord,
+} = useRecordActions(records);
 const selectedPipelineIds = ref<Set<string>>(new Set());
 
 const runningCount = computed(() => records.value.filter((item) => item.status === "pending" || item.status === "running").length);
@@ -487,12 +319,6 @@ const filteredRecords = computed(() => {
     return matchesKeyword;
   });
 });
-
-const issueItems = computed(() =>
-  Object.values(issueMap.value)
-    .flat()
-    .sort((a, b) => `${b.finishedAt || ""}`.localeCompare(`${a.finishedAt || ""}`) || a.sec - b.sec),
-);
 
 const filteredIssues = computed(() => {
   const keyword = search.value.trim().toLowerCase();
@@ -528,21 +354,12 @@ const selectedRecord = computed(() => records.value.find((item) => item.pipeline
 const selectedIssue = computed(() => filteredIssues.value.find((item) => item.id === selectedIssueId.value) ?? null);
 const canCancelSelectedRecord = computed(() => {
   const item = detail.value ?? selectedRecord.value;
-  return Boolean(item && (item.status === "pending" || item.status === "running") && !item.cancel_requested);
+  return Boolean(item && isRunningTaskStatus(item.status) && !item.cancel_requested);
 });
 const canDeleteSelectedRecord = computed(() => {
   const item = detail.value ?? selectedRecord.value;
   return Boolean(item && item.status !== "pending" && item.status !== "running");
 });
-
-function isRunningTaskStatus(status?: string | null) {
-  return status === "pending" || status === "running";
-}
-
-function canDeletePipelineId(pipelineId: string) {
-  const item = records.value.find((record) => record.pipeline_id === pipelineId);
-  return !item || !isRunningTaskStatus(item.status);
-}
 
 function setSelectedPipelineIds(nextIds: Iterable<string>) {
   selectedPipelineIds.value = new Set(nextIds);
@@ -574,47 +391,6 @@ function toggleSelectAllVisible() {
 }
 
 const canOpenSelectedInCompare = computed(() => Boolean(selectedRecord.value?.teacher_video_id && selectedRecord.value?.user_video_id));
-const detailConfidenceText = computed(() => confidenceText(detail.value?.report?.confidence?.score ?? detail.value?.confidence_score));
-const detailConfidenceSummaryText = computed(() =>
-  normalizedConfidenceSummary(detail.value?.report?.confidence, detail.value?.report?.confidence?.summary || detail.value?.confidence_summary),
-);
-const aiCoachSourceText = computed(() => {
-  if (!aiCoach.value) return "";
-  if (aiCoach.value.generated_by === "aliyun") return aiCoach.value.model || "阿里云百炼";
-  if (aiCoach.value.generated_by === "openai") return aiCoach.value.model || "OpenAI";
-  return "本地兜底";
-});
-const aiCoachFallbackHint = computed(() => {
-  if (aiCoach.value?.generated_by !== "local_fallback") return "";
-  return "当前展示的是基于分析报告的本地规则建议；云端 AI 不可用时，演示复盘仍可继续。";
-});
-const topJointSummary = computed(() => {
-  const joints = detail.value?.report?.top_joints ?? detail.value?.top_joints;
-  if (!Array.isArray(joints) || !joints.length) return "";
-  return joints.slice(0, 3).map((item: any) => `${item[0]} (${Number(item[1]).toFixed(3)})`).join("、");
-});
-const detailLeadText = computed(() => {
-  return (
-    detail.value?.report?.recommendations?.overall ||
-    detail.value?.overall_advice ||
-    detail.value?.report?.beginner_report?.summary ||
-    detail.value?.beginner_summary ||
-    detail.value?.report?.teaching_report?.summary ||
-    detail.value?.teaching_summary ||
-    ""
-  );
-});
-const detailLinks = computed<DetailLinkItem[]>(() => {
-  const files = detail.value?.files || {};
-  const links = [
-    { label: "报告 JSON", url: files.report_url },
-    { label: "摘要 JSON", url: files.summary_url },
-    { label: "教师骨架视频", url: files.teacher_overlay_url },
-    { label: "学员骨架视频", url: files.user_overlay_url },
-    { label: "时间轴 JSON", url: files.timeline_json_url },
-  ];
-  return links.filter((item) => item.url).map((item) => ({ label: item.label, url: absMediaUrl(item.url) }));
-});
 const detailIssues = computed<IssueReplayItem[]>(() => (Array.isArray(detail.value?.issues) ? mapIssueItems(detail.value?.issues || []) : []));
 
 function parseTab(value: unknown): WorkspaceTab {
@@ -640,50 +416,10 @@ async function refreshWorkspace() {
   await loadWorkspace();
 }
 
-function mapIssueItems(items: RecordWorkspaceIssueItem[]): IssueReplayItem[] {
-  return items.map((item) => ({
-    id: item.id,
-    pipelineId: item.pipeline_id,
-    pairName: item.pair_name,
-    teacherVideoId: item.teacher_video_id,
-    userVideoId: item.user_video_id,
-    type: item.type,
-    severity: item.severity,
-    sec: item.sec,
-    frame: item.frame,
-    summary: item.summary,
-    action: item.action,
-    finishedAt: item.finished_at,
-    scoreTotal: item.score_total,
-    confidenceScore: item.confidence_score,
-  }));
-}
-
-function mapWorkspaceIssues(items: RecordWorkspaceIssueItem[]): Record<string, IssueReplayItem[]> {
-  const nextMap: Record<string, IssueReplayItem[]> = {};
-  for (const mapped of mapIssueItems(items)) {
-    if (!nextMap[mapped.pipelineId]) {
-      nextMap[mapped.pipelineId] = [];
-    }
-    nextMap[mapped.pipelineId].push(mapped);
-  }
-  return nextMap;
-}
-
 async function loadWorkspace() {
-  loading.value = true;
-  issueLoading.value = true;
-  error.value = "";
-  try {
-    const workspace = await getRecordsWorkspace(100);
-    records.value = workspace.items;
-    issueMap.value = mapWorkspaceIssues(workspace.issues);
+  await loadRecordsWorkspace(100);
+  if (!error.value) {
     await hydrateSelectionFromRoute();
-  } catch (err: any) {
-    error.value = friendlyError(err, "记录中心加载失败");
-  } finally {
-    loading.value = false;
-    issueLoading.value = false;
   }
 }
 
@@ -714,8 +450,7 @@ async function openRecord(pipelineId: string) {
   selectedIssueId.value = "";
   detailLoading.value = true;
   detailError.value = "";
-  aiCoach.value = null;
-  aiCoachError.value = "";
+  clearAiCoach();
   try {
     detail.value = await getPipelineResultSummary(pipelineId);
     focusDetailPanel(detailPanelRef, { forceScroll: true });
@@ -731,8 +466,7 @@ function closeRecordDetail() {
   selectedRecordId.value = "";
   detail.value = null;
   detailError.value = "";
-  aiCoach.value = null;
-  aiCoachError.value = "";
+  clearAiCoach();
 }
 
 async function toggleRecord(pipelineId: string) {
@@ -763,76 +497,46 @@ async function toggleIssue(issueId: string) {
 }
 
 async function copyPipelineId(pipelineId: string) {
-  try {
-    await navigator.clipboard.writeText(pipelineId);
-    copyingId.value = pipelineId;
-    window.setTimeout(() => {
-      if (copyingId.value === pipelineId) copyingId.value = "";
-    }, 1400);
-  } catch {
-    detailError.value = "复制失败，请手动复制任务 ID。";
-  }
+  await copyRecordPipelineId(pipelineId);
+  if (actionError.value) detailError.value = actionError.value;
 }
 
 async function loadDetailAiCoach(pipelineId: string) {
-  if (!pipelineId) return;
-  aiCoachLoading.value = true;
-  aiCoachError.value = "";
-  try {
-    aiCoach.value = await getAiCoachReport(pipelineId);
-  } catch (err: any) {
-    aiCoachError.value = friendlyError(err, "AI解读生成失败");
-  } finally {
-    aiCoachLoading.value = false;
-  }
+  await loadAiCoach(pipelineId);
 }
 
 async function cancelSelectedRecord() {
   const pipelineId = selectedRecordId.value;
   if (!pipelineId || !canCancelSelectedRecord.value) return;
 
-  cancelingId.value = pipelineId;
   detailError.value = "";
-  try {
-    const status = await cancelPipeline(pipelineId);
-    records.value = records.value.map((item) => (item.pipeline_id === pipelineId ? { ...item, ...status } : item));
-    detail.value = detail.value ? { ...detail.value, ...status } : detail.value;
-  } catch (err: any) {
-    detailError.value = friendlyError(err, "取消任务失败");
-  } finally {
-    cancelingId.value = "";
+  const status = await cancelPipelineRecord(pipelineId);
+  if (!status) {
+    detailError.value = actionError.value;
+    return;
   }
+  records.value = records.value.map((item) => (item.pipeline_id === pipelineId ? { ...item, ...status } : item));
+  detail.value = detail.value ? { ...detail.value, ...status } : detail.value;
 }
 
 async function deletePipeline(pipelineId: string) {
   const record = records.value.find((item) => item.pipeline_id === pipelineId);
-  if (record && isRunningTaskStatus(record.status)) {
-    error.value = runningTaskDeleteMessage();
-    detailError.value = runningTaskDeleteMessage();
-    return;
-  }
-
   const label = record?.pair_name || pipelineId;
   const confirmed = window.confirm(`确认删除“${label}”吗？相关任务、报告和问题片段会一起移除。`);
   if (!confirmed) return;
 
-  deletingId.value = pipelineId;
-  try {
-    await deletePipelineTask(pipelineId);
-    records.value = records.value.filter((item) => item.pipeline_id !== pipelineId);
-    const nextMap = { ...issueMap.value };
-    delete nextMap[pipelineId];
-    issueMap.value = nextMap;
-    const nextSelection = new Set(selectedPipelineIds.value);
-    nextSelection.delete(pipelineId);
-    setSelectedPipelineIds(nextSelection);
-    if (selectedRecordId.value === pipelineId) closeRecordDetail();
-    if (selectedIssue.value?.pipelineId === pipelineId) closeIssueDetail();
-  } catch (err: any) {
-    error.value = friendlyError(err, "删除记录失败");
-  } finally {
-    deletingId.value = "";
+  const ok = await deletePipelineRecord(pipelineId);
+  if (!ok) {
+    error.value = actionError.value;
+    detailError.value = actionError.value;
+    return;
   }
+  removePipeline(pipelineId);
+  const nextSelection = new Set(selectedPipelineIds.value);
+  nextSelection.delete(pipelineId);
+  setSelectedPipelineIds(nextSelection);
+  if (selectedRecordId.value === pipelineId) closeRecordDetail();
+  if (selectedIssue.value?.pipelineId === pipelineId) closeIssueDetail();
 }
 
 async function deleteSelectedPipelines() {
@@ -847,16 +551,13 @@ async function deleteSelectedPipelines() {
   const failed: string[] = [];
   try {
     for (const pipelineId of pipelineIds) {
-      deletingId.value = pipelineId;
-      try {
-        await deletePipelineTask(pipelineId);
-        records.value = records.value.filter((item) => item.pipeline_id !== pipelineId);
-        const nextMap = { ...issueMap.value };
-        delete nextMap[pipelineId];
-        issueMap.value = nextMap;
-        if (selectedRecordId.value === pipelineId) closeRecordDetail();
-        if (selectedIssue.value?.pipelineId === pipelineId) closeIssueDetail();
-      } catch (err: any) {
+        deletingId.value = pipelineId;
+        try {
+          await deletePipelineTask(pipelineId);
+          removePipeline(pipelineId);
+          if (selectedRecordId.value === pipelineId) closeRecordDetail();
+          if (selectedIssue.value?.pipelineId === pipelineId) closeIssueDetail();
+        } catch (err: any) {
         failed.push(friendlyError(err, `删除 ${pipelineId} 失败`));
       }
     }
@@ -915,7 +616,7 @@ function latestTime(item: Partial<RecordItem>) {
 }
 
 function recordLead(item: Partial<RecordItem>) {
-  if (item.status === "pending" || item.status === "running") {
+  if (isRunningTaskStatus(item.status)) {
     return item.message || `${stageText(item.stage, item.status)}，这条记录仍在处理中。`;
   }
   if (item.status === "failed") {
@@ -928,12 +629,6 @@ function recordLead(item: Partial<RecordItem>) {
     normalizedConfidenceSummary(null, item.confidence_summary) ||
     "本条记录已完成，可展开查看摘要、输出文件和问题片段。"
   );
-}
-
-function progressPercent(progress?: number | null) {
-  const value = Number(progress ?? 0);
-  if (!Number.isFinite(value)) return 0;
-  return Math.round(Math.max(0, Math.min(1, value)) * 100);
 }
 
 function statusText(status?: string | null) {
@@ -966,26 +661,6 @@ function stageText(stage?: string | null, status?: string | null) {
   return statusText(status);
 }
 
-function issueTypeText(value?: string) {
-  if (value === "pose_error") return "动作误差";
-  if (value === "tempo") return "节奏异常";
-  if (value === "confidence") return "可信度风险";
-  if (value === "tracking_bad") return "跟踪问题";
-  return value || "待定";
-}
-
-function severityText(value?: string) {
-  if (value === "high") return "高优先级";
-  if (value === "medium") return "中优先级";
-  return "低优先级";
-}
-
-function severityTone(value?: string) {
-  if (value === "high") return "danger";
-  if (value === "medium") return "warn";
-  return "ok";
-}
-
 function confidenceText(value?: number | string | null) {
   const num = Number(value);
   if (!Number.isFinite(num)) return "--";
@@ -996,12 +671,6 @@ function scoreText(value?: number | string | null) {
   const num = Number(value);
   if (!Number.isFinite(num)) return "--";
   return num.toFixed(1);
-}
-
-function timeText(sec?: number | null) {
-  const num = Number(sec);
-  if (!Number.isFinite(num)) return "--";
-  return `${num.toFixed(2)}s`;
 }
 
 function formatDate(value?: string | null) {
@@ -1038,12 +707,7 @@ onMounted(async () => {
 .records-toolbar,
 .records-workspace,
 .records-list,
-.record-shell,
-.inline-detail,
-.detail-stack,
-.detail-column,
-.detail-columns,
-.issue-chip-list {
+.record-shell {
   display: grid;
   gap: 14px;
 }
@@ -1225,10 +889,6 @@ onMounted(async () => {
   box-shadow: none;
 }
 
-.issue-dense-row {
-  grid-template-columns: minmax(0, 1.8fr) 140px 120px 220px;
-}
-
 .dense-row:hover:not(:disabled) {
   transform: translateY(-1px);
   border-color: rgba(15, 143, 179, 0.22);
@@ -1265,61 +925,6 @@ onMounted(async () => {
   font-variant-numeric: tabular-nums;
 }
 
-.inline-detail {
-  padding: 18px 20px 20px;
-  border-radius: 18px;
-  border: 1px solid rgba(15, 23, 42, 0.08);
-  background: linear-gradient(180deg, rgba(248, 250, 252, 0.98) 0%, rgba(255, 255, 255, 0.98) 100%);
-  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.04);
-}
-
-.compact-stats {
-  display: grid;
-  gap: 10px;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-
-.detail-columns {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.detail-links {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.ai-record-card {
-  border-color: rgba(15, 143, 179, 0.18);
-  background:
-    radial-gradient(circle at top right, rgba(15, 143, 179, 0.12), transparent 32%),
-    rgba(255, 255, 255, 0.9);
-}
-
-.record-card-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.issue-chip-list {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.issue-chip {
-  border-radius: 12px;
-  border: 1px solid rgba(15, 23, 42, 0.08);
-  background: rgba(255, 255, 255, 0.94);
-  color: var(--text);
-  padding: 0.78rem 0.88rem;
-  box-shadow: none;
-  text-transform: none;
-  letter-spacing: 0;
-  font-size: 0.86rem;
-  font-weight: 700;
-}
-
 .danger-button {
   color: #b42318;
   border-color: rgba(180, 35, 24, 0.22);
@@ -1334,9 +939,7 @@ onMounted(async () => {
   .records-kpi-row,
   .records-toolbar-grid,
   .records-table-head,
-  .dense-row,
-  .issue-dense-row,
-  .detail-columns {
+  .dense-row {
     grid-template-columns: 1fr;
   }
 
@@ -1350,10 +953,4 @@ onMounted(async () => {
   }
 }
 
-@media (max-width: 1024px) {
-  .compact-stats,
-  .issue-chip-list {
-    grid-template-columns: 1fr;
-  }
-}
 </style>

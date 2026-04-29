@@ -118,6 +118,7 @@ class PipelineResultResponse(BaseModel):
     report: dict | None = None
     timeline: dict | None = None
     files: dict | None = None
+    score_explanation: dict | None = None
 
 
 class PipelineResultSummaryResponse(BaseModel):
@@ -140,6 +141,7 @@ class PipelineResultSummaryResponse(BaseModel):
     timeout_sec: int | None = None
     timeout_at: str | None = None
     report: dict | None = None
+    score_explanation: dict | None = None
     timeline: dict | None = None
     files: dict | None = None
     issues: list[dict] = Field(default_factory=list)
@@ -224,6 +226,7 @@ class AnalysisReportItem(BaseModel):
     beginner_summary: str | None = None
     teaching_summary: str | None = None
     top_joints: list = Field(default_factory=list)
+    score_explanation: dict | None = None
     files: dict | None = None
 
 

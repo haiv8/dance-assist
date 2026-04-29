@@ -15,61 +15,22 @@ from scipy.io import wavfile
 from scipy.signal import correlate, savgol_filter
 
 from core.config import PipelineConfig
+from core.features import (
+    KEY_JOINTS,
+    LM_NAMES,
+    build_feature as _build_feature,
+    mirror_xyz as _mirror_xyz,
+    motion_energy as _motion_energy,
+    normalize_body as _normalize_body,
+)
+from core.issue_detection import advice_for_issue as _advice_for_issue
+from core.issue_detection import joint_to_cn as _joint_to_cn
+from core.issue_detection import peak_pick as _peak_pick
 from core.io_utils import dump_json, ensure_dir, make_result_id, utc_ts
+from core.scoring import build_confidence_summary as _build_confidence_summary
+from core.scoring import build_score_explanation as _build_score_explanation
+from core.scoring import score_alignment as _score
 from core.types import AlignInfo, PipelineResult, QualityInfo, ScoreBreakdown
-
-LM_NAMES = [
-    "nose", "left_eye_inner", "left_eye", "left_eye_outer",
-    "right_eye_inner", "right_eye", "right_eye_outer",
-    "left_ear", "right_ear", "mouth_left", "mouth_right",
-    "left_shoulder", "right_shoulder", "left_elbow", "right_elbow",
-    "left_wrist", "right_wrist", "left_pinky", "right_pinky",
-    "left_index", "right_index", "left_thumb", "right_thumb",
-    "left_hip", "right_hip", "left_knee", "right_knee",
-    "left_ankle", "right_ankle", "left_heel", "right_heel",
-    "left_foot_index", "right_foot_index"
-]
-
-MAJOR_JOINTS = [11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28]
-KEY_JOINTS = [11, 12, 15, 16, 23, 24, 25, 26, 27, 28]
-
-JOINT_CN = {
-    "left_shoulder": "左肩",
-    "right_shoulder": "右肩",
-    "left_elbow": "左肘",
-    "right_elbow": "右肘",
-    "left_wrist": "左手腕",
-    "right_wrist": "右手腕",
-    "left_hip": "左髋",
-    "right_hip": "右髋",
-    "left_knee": "左膝",
-    "right_knee": "右膝",
-    "left_ankle": "左踝",
-    "right_ankle": "右踝",
-    "left_foot_index": "左脚尖",
-    "right_foot_index": "右脚尖",
-}
-
-LEFT_RIGHT_SWAP = {
-    1: 4, 2: 5, 3: 6, 7: 8, 9: 10,
-    11: 12, 13: 14, 15: 16, 17: 18, 19: 20, 21: 22,
-    23: 24, 25: 26, 27: 28, 29: 30, 31: 32,
-}
-for a, b in list(LEFT_RIGHT_SWAP.items()):
-    LEFT_RIGHT_SWAP[b] = a
-
-ANGLE_TRIPLETS = [
-    (11, 13, 15), (12, 14, 16),
-    (23, 25, 27), (24, 26, 28),
-    (13, 11, 23), (14, 12, 24),
-    (11, 23, 25), (12, 24, 26),
-]
-
-BONE_PAIRS = [
-    (11, 13), (13, 15), (12, 14), (14, 16),
-    (23, 25), (25, 27), (24, 26), (26, 28),
-    (11, 23), (12, 24), (11, 12), (23, 24),
-]
 
 
 def _load_arr(path: Path) -> tuple[np.ndarray, np.ndarray]:
@@ -172,93 +133,6 @@ def _quality_and_fill(xyz: np.ndarray, vis: np.ndarray, cfg: PipelineConfig) -> 
         joint_valid_ratio=np.mean(valid, axis=0).astype(np.float32),
     )
     return out, q
-
-
-def _normalize_body(xyz: np.ndarray) -> np.ndarray:
-    hip = 0.5 * (xyz[:, 23, :] + xyz[:, 24, :])
-    sh = 0.5 * (xyz[:, 11, :] + xyz[:, 12, :])
-    torso = np.linalg.norm(sh - hip, axis=1)
-    scale = float(np.nanmedian(torso))
-    if (not np.isfinite(scale)) or scale < 1e-6:
-        scale = 1.0
-
-    centered = (xyz - hip[:, None, :]) / scale
-
-    # yaw normalization by shoulder vector on x-z plane
-    v = centered[:, 12, :] - centered[:, 11, :]
-    yaw = np.arctan2(v[:, 2], v[:, 0] + 1e-9)
-    out = centered.copy()
-    for i in range(centered.shape[0]):
-        c = math.cos(-float(yaw[i]))
-        s = math.sin(-float(yaw[i]))
-        x = centered[i, :, 0]
-        z = centered[i, :, 2]
-        out[i, :, 0] = c * x - s * z
-        out[i, :, 2] = s * x + c * z
-    return out.astype(np.float32)
-
-
-def _mirror_xyz(xyz: np.ndarray) -> np.ndarray:
-    out = xyz.copy()
-    out[..., 0] *= -1.0
-    idx = np.arange(33)
-    for i in range(33):
-        idx[i] = LEFT_RIGHT_SWAP.get(i, i)
-    out = out[:, idx, :]
-    return out
-
-
-def _angle_feature(xyz: np.ndarray) -> np.ndarray:
-    feats = []
-    for a, b, c in ANGLE_TRIPLETS:
-        v1 = xyz[:, a, :] - xyz[:, b, :]
-        v2 = xyz[:, c, :] - xyz[:, b, :]
-        n1 = np.linalg.norm(v1, axis=1) + 1e-8
-        n2 = np.linalg.norm(v2, axis=1) + 1e-8
-        cosv = np.sum(v1 * v2, axis=1) / (n1 * n2)
-        cosv = np.clip(cosv, -1.0, 1.0)
-        feats.append(np.arccos(cosv))
-    return np.stack(feats, axis=1).astype(np.float32)
-
-
-def _bone_feature(xyz: np.ndarray) -> np.ndarray:
-    vecs = []
-    for a, b in BONE_PAIRS:
-        v = xyz[:, b, :] - xyz[:, a, :]
-        n = np.linalg.norm(v, axis=1, keepdims=True) + 1e-8
-        vecs.append((v / n).astype(np.float32))
-    return np.concatenate(vecs, axis=1).astype(np.float32)
-
-
-def _kin_feature(xyz: np.ndarray) -> np.ndarray:
-    base = xyz[:, MAJOR_JOINTS, :].reshape(xyz.shape[0], -1)
-    vel = np.zeros_like(base)
-    vel[1:] = base[1:] - base[:-1]
-    acc = np.zeros_like(base)
-    acc[1:] = vel[1:] - vel[:-1]
-    return np.concatenate([vel, acc], axis=1).astype(np.float32)
-
-
-def _build_feature(xyz_body: np.ndarray, cfg: PipelineConfig) -> tuple[np.ndarray, dict[str, int]]:
-    a = _angle_feature(xyz_body)
-    b = _bone_feature(xyz_body)
-    k = _kin_feature(xyz_body)
-
-    feat = np.concatenate([
-        cfg.fused_w_angle * a,
-        cfg.fused_w_bone * b,
-        cfg.fused_w_kin * k,
-    ], axis=1).astype(np.float32)
-
-    return feat, {"angle": a.shape[1], "bone": b.shape[1], "kin": k.shape[1], "fused": feat.shape[1]}
-
-
-def _motion_energy(xyz_body: np.ndarray) -> np.ndarray:
-    target = xyz_body[:, [15, 16, 27, 28], :].reshape(xyz_body.shape[0], -1)
-    v = np.zeros_like(target)
-    v[1:] = target[1:] - target[:-1]
-    e = np.linalg.norm(v, axis=1)
-    return e
 
 
 def _extract_audio_waveform(video_path: Path, sample_rate: int) -> np.ndarray:
@@ -982,70 +856,6 @@ def _tempo_from_windowed_matches(
     return tempo_rel.astype(np.float32), conf.astype(np.float32), segments, dev_area, smooth.astype(np.float32)
 
 
-def _peak_pick(curve: np.ndarray, topk: int, min_gap: int, valid_mask: np.ndarray | None = None) -> list[int]:
-    x = np.nan_to_num(curve.astype(np.float64), nan=0.0)
-    order = np.argsort(-x)
-    out: list[int] = []
-    for idx in order:
-        i = int(idx)
-        if valid_mask is not None and (not bool(valid_mask[i])):
-            continue
-        if all(abs(i - p) >= min_gap for p in out):
-            out.append(i)
-            if len(out) >= topk:
-                break
-    out.sort()
-    return out
-
-
-def _score(mean_w_joint: float, tempo_dev_area: float, err_curve: np.ndarray, low_quality_ratio: float, cfg: PipelineConfig) -> ScoreBreakdown:
-    pose = float(100.0 * np.exp(-cfg.pose_alpha * mean_w_joint))
-    tempo = float(100.0 * np.exp(-cfg.tempo_alpha * tempo_dev_area))
-
-    x = np.nan_to_num(err_curve, nan=float(np.nanmean(err_curve) if np.isfinite(np.nanmean(err_curve)) else 0.0))
-    if len(x) > 2:
-        d = np.diff(x)
-        peaks = np.sum((d[:-1] > 0) & (d[1:] < 0))
-    else:
-        peaks = 0
-    smooth_pen = peaks / max(1, len(x))
-    smooth = float(100.0 * np.exp(-cfg.smooth_alpha * smooth_pen * 10.0))
-
-    qpen = float(np.clip(low_quality_ratio * cfg.quality_penalty_scale * 4.0, 0.0, 100.0))
-
-    w = cfg.score_weights
-    total = w.pose * pose + w.tempo * tempo + w.smooth * smooth - w.quality_penalty * qpen
-
-    # Keep the score learner-friendly: poor tracking should mainly lower
-    # confidence, not automatically crush the practice score unless the
-    # visible motion evidence is also very weak.
-    if low_quality_ratio >= 0.95:
-        total = min(total, 72.0)
-    elif low_quality_ratio >= 0.85:
-        total = min(total, 78.0)
-    elif low_quality_ratio >= 0.70:
-        total = min(total, 85.0)
-
-    total = float(np.clip(total, 0.0, 100.0))
-
-    return ScoreBreakdown(pose, tempo, smooth, qpen, total)
-
-
-def _joint_to_cn(name: str) -> str:
-    return JOINT_CN.get(name, name)
-
-
-def _advice_for_issue(issue_type: str, joint_name: str) -> str:
-    jn = _joint_to_cn(joint_name)
-    if issue_type == "tempo_fast":
-        return f"该段节奏偏快，先把速度降下来，优先保证 {jn} 的轨迹清晰、到位再提速。"
-    if issue_type == "tempo_slow":
-        return f"该段节奏偏慢，建议提前准备发力点，重点提高 {jn} 的起落速度。"
-    if issue_type == "tracking_bad":
-        return "该段识别质量较差，建议正对镜头、增加光照并确保全身入镜后再练习。"
-    return f"该段动作偏差较大，建议先分解练习 {jn}，再与上下肢连贯配合。"
-
-
 def _build_beginner_report(
     frame_analysis: list[dict[str, Any]],
     tempo_segments: list[dict[str, Any]],
@@ -1279,115 +1089,6 @@ def _build_teaching_report(
         "modules": module_list,
         "timeline_tasks": timeline_tasks[:16],
         "text_report": "\n".join(lines),
-    }
-
-
-def _quality_snapshot(q: QualityInfo, cfg: PipelineConfig) -> dict[str, float]:
-    frame_quality = np.clip(q.frame_quality.astype(np.float32), 0.0, 1.0)
-    return {
-        "mean_quality": float(np.mean(frame_quality)) if len(frame_quality) else 0.0,
-        "invalid_ratio": float(np.mean(frame_quality < cfg.invalid_frame_quality_thr)) if len(frame_quality) else 1.0,
-        "low_conf_ratio": float(np.mean(frame_quality < 0.55)) if len(frame_quality) else 1.0,
-        "long_gap_ratio": float(len(q.long_gap_frames) / max(1, len(frame_quality))),
-    }
-
-
-def _build_confidence_summary(
-    teacher_quality: QualityInfo,
-    user_quality: QualityInfo,
-    tempo_conf: np.ndarray,
-    align: AlignInfo,
-    *,
-    bad_alignment: bool,
-    partial_alignment: dict[str, Any] | None = None,
-    cfg: PipelineConfig,
-) -> dict[str, Any]:
-    teacher = _quality_snapshot(teacher_quality, cfg)
-    user = _quality_snapshot(user_quality, cfg)
-
-    tracking_quality = float(np.clip(
-        0.3 * ((teacher["mean_quality"] + user["mean_quality"]) / 2.0)
-        + 0.4 * (1.0 - ((teacher["invalid_ratio"] + user["invalid_ratio"]) / 2.0))
-        + 0.3 * (1.0 - ((teacher["low_conf_ratio"] + user["low_conf_ratio"]) / 2.0)),
-        0.0,
-        1.0,
-    ))
-
-    tempo_stability = float(np.mean(np.clip(tempo_conf.astype(np.float32), 0.0, 1.0))) if len(tempo_conf) else 0.0
-    jump_penalty = float(np.clip(align.jump_rate / 0.45, 0.0, 1.0))
-    warp_penalty = float(np.clip(abs(align.warp_ratio - 1.0) / 0.9, 0.0, 1.0))
-    alignment_stability = float(np.clip(1.0 - (0.7 * jump_penalty + 0.3 * warp_penalty), 0.0, 1.0))
-    if bad_alignment:
-        alignment_stability *= 0.55
-    if partial_alignment and partial_alignment.get("applied"):
-        teacher_coverage = float(partial_alignment.get("teacher_coverage_ratio") or 0.0)
-        alignment_stability *= float(np.clip(0.65 + 0.35 * teacher_coverage, 0.35, 1.0))
-
-    score = float(np.clip(
-        0.5 * tracking_quality + 0.3 * alignment_stability + 0.2 * tempo_stability,
-        0.0,
-        1.0,
-    ))
-
-    if score >= 0.78:
-        level = "high"
-        summary = "当前结果可信度较高，关键点跟踪、动作对齐和节奏估计整体稳定，可作为本轮分析的主要参考。"
-    elif score >= 0.55:
-        level = "medium"
-        summary = "当前结果可信度中等，整体趋势可以参考，但局部片段可能受跟踪质量或对齐稳定性影响。"
-    else:
-        level = "low"
-        summary = "当前结果可信度较低，建议优先检查拍摄视角、遮挡和节奏同步情况，再结合视频回放谨慎解读。"
-
-    issues: list[dict[str, Any]] = []
-    if max(teacher["invalid_ratio"], user["invalid_ratio"]) >= 0.22:
-        issues.append({
-            "code": "tracking_coverage_low",
-            "severity": "high" if max(teacher["invalid_ratio"], user["invalid_ratio"]) >= 0.35 else "medium",
-            "message": "关键点覆盖率偏低，部分肢体没有被稳定识别。",
-            "suggestion": "建议保证全身完整入镜、光照均匀，并尽量减少快速遮挡后再重新分析。",
-        })
-    if max(teacher["long_gap_ratio"], user["long_gap_ratio"]) >= 0.10:
-        issues.append({
-            "code": "long_occlusion_gap",
-            "severity": "medium",
-            "message": "存在较长时间的遮挡或关键点缺失。",
-            "suggestion": "建议拉开拍摄距离，减少遮挡，确保手脚和躯干连续可见。",
-        })
-    if bad_alignment or align.jump_rate >= 0.35:
-        issues.append({
-            "code": "alignment_unstable",
-            "severity": "high" if bad_alignment else "medium",
-            "message": "动作对齐稳定性不足，部分片段的匹配结果可能不够可靠。",
-            "suggestion": "建议检查示范与学员视频的起始时刻是否接近，并尽量保留完整连续的动作片段。",
-        })
-    if partial_alignment and partial_alignment.get("applied"):
-        teacher_sec = partial_alignment.get("teacher_segment_sec") or [0.0, 0.0]
-        teacher_coverage = float(partial_alignment.get("teacher_coverage_ratio") or 0.0)
-        issues.append({
-            "code": "partial_alignment_applied",
-            "severity": "medium" if teacher_coverage >= 0.35 else "high",
-            "message": f"系统只在老师视频 {teacher_sec[0]:.2f}-{teacher_sec[1]:.2f} 秒范围内找到可靠匹配片段。",
-            "suggestion": "当前总分主要反映已匹配片段；如果希望得到整段评分，建议上传与老师视频动作范围更接近的学员片段。",
-        })
-    if tempo_stability < 0.60:
-        issues.append({
-            "code": "tempo_confidence_low",
-            "severity": "medium",
-            "message": "节奏估计稳定性较低，节拍相关判断需要谨慎参考。",
-            "suggestion": "建议使用更清晰的原始音频，或在节奏更明确的片段重新分析。",
-        })
-
-    return {
-        "score": score,
-        "level": level,
-        "summary": summary,
-        "tracking_quality": tracking_quality,
-        "alignment_stability": alignment_stability,
-        "tempo_stability": tempo_stability,
-        "teacher_mean_quality": teacher["mean_quality"],
-        "user_mean_quality": user["mean_quality"],
-        "issues": issues,
     }
 
 
@@ -1936,6 +1637,11 @@ def run(
         partial_alignment=partial_alignment,
         cfg=cfg,
     )
+    score_explanation = _build_score_explanation(
+        score,
+        confidence_summary,
+        issue_count=len(markers) + len(tempo_segments) + len(confidence_summary.get("issues", [])),
+    )
 
     # report
     report = {
@@ -1954,6 +1660,7 @@ def run(
         },
         "quality_stats": quality_stats,
         "confidence": confidence_summary,
+        "score_explanation": score_explanation,
         "mirror_detected": bool(mirror_detected),
         "mirror_applied_to": mirror_applied_to,
         "mirror_gain": float(gain),
@@ -2089,6 +1796,7 @@ def run(
         "confidence_score": confidence_summary["score"],
         "confidence_level": confidence_summary["level"],
         "confidence_summary": confidence_summary["summary"],
+        "score_explanation": score_explanation,
         "audio_offset_sec": float(audio_alignment.get("offset_sec", 0.0) or 0.0),
         "mean_abs_timing_offset_sec": float(np.mean(np.abs(timing_offset_sec))) if len(timing_offset_sec) else 0.0,
     }

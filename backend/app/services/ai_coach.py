@@ -157,6 +157,7 @@ def _local_coach(summary: dict[str, Any], *, setup_hint: str | None = None) -> d
             },
         ],
         "teacher_notes": [
+            "AI 解读基于已生成的结构化分析报告，不参与动作评分计算。",
             compact.get("confidence_summary") or "复盘时需要结合可信度判断，不要只看总分。",
             "讲评顺序建议是：节奏是否对齐、身体重心是否稳定、关键关节路线是否清晰。",
         ],

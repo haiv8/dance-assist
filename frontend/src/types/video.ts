@@ -84,6 +84,15 @@ export interface PipelineActionResponse {
   message: string;
 }
 
+export interface ScoreExplanation {
+  level?: string | null;
+  summary?: string | null;
+  score_note?: string | null;
+  confidence_note?: string | null;
+  main_factor?: string | null;
+  next_action?: string | null;
+}
+
 export interface PipelineResultResponse {
   pipeline_id: string;
   pair_name: string;
@@ -106,6 +115,7 @@ export interface PipelineResultResponse {
   report?: Record<string, any> | null;
   timeline?: Record<string, any> | null;
   files?: Record<string, string> | null;
+  score_explanation?: ScoreExplanation | null;
 }
 
 export interface PipelineResultSummaryResponse {
@@ -131,6 +141,7 @@ export interface PipelineResultSummaryResponse {
   timeline?: Record<string, any> | null;
   files?: Record<string, string> | null;
   issues?: RecordWorkspaceIssueItem[] | null;
+  score_explanation?: ScoreExplanation | null;
 }
 
 export interface PipelineFrameDetailResponse {
@@ -209,6 +220,7 @@ export interface AnalysisReportItem {
   score_tempo?: number | null;
   confidence_score?: number | null;
   confidence_level?: string | null;
+  score_explanation?: ScoreExplanation | null;
   overall_advice?: string | null;
   confidence_summary?: string | null;
   beginner_summary?: string | null;
@@ -261,6 +273,23 @@ export interface RecordWorkspaceIssueItem {
   finished_at?: string | null;
   score_total?: number | null;
   confidence_score?: number | null;
+}
+
+export interface IssueReplayItem {
+  id: string;
+  pipelineId: string;
+  pairName: string;
+  teacherVideoId?: string | null;
+  userVideoId?: string | null;
+  type: string;
+  severity: IssueSeverityType;
+  sec: number;
+  frame?: number | null;
+  summary: string;
+  action?: string | null;
+  finishedAt?: string | null;
+  scoreTotal?: number | null;
+  confidenceScore?: number | null;
 }
 
 export interface RecordWorkspaceResponse {

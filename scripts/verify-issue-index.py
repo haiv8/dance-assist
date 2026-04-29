@@ -41,6 +41,8 @@ def main() -> None:
                 "teacher_video_id": "teacher",
                 "user_video_id": "user",
                 "updated_at": "2026-04-25T00:00:00Z",
+                "score_total": 72.5,
+                "confidence_score": 0.68,
                 "report": {
                     "markers": [
                         {"frame": 12, "sec": 1.2, "type": "pose_error", "severity": "clear"},
@@ -49,6 +51,11 @@ def main() -> None:
             }
             issues = save_issue_index(report)
             assert len(issues) == 1
+            first_issue = issues[0]
+            assert first_issue.get("pipeline_id") == "verify_marker"
+            assert first_issue.get("pair_name") == "verify_marker_pair"
+            assert "score_total" in first_issue
+            assert "confidence_score" in first_issue
             assert issue_index_path(report).name == "issues.json"
             assert issue_index_path(report).exists()
             assert issue_index_path(report).parent.name == "verify_marker_pair"

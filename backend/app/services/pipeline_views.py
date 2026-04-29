@@ -348,6 +348,11 @@ def pipeline_result_summary_payload(task: dict[str, Any], pipeline_id: str) -> d
         "timeout_sec": task.get("timeout_sec"),
         "timeout_at": task.get("timeout_at"),
         "report": summarize_report(report_payload),
+        "score_explanation": (
+            report_payload.get("score_explanation")
+            if isinstance(report_payload, dict) and isinstance(report_payload.get("score_explanation"), dict)
+            else None
+        ),
         "timeline": summarize_timeline(task.get("timeline")),
         "files": task.get("files"),
         "issues": extract_report_issues(
@@ -459,6 +464,7 @@ def analysis_report_fallback_item(item: dict[str, Any], task: dict[str, Any]) ->
             else fallback_teaching_summary(item.get("score_total"), 0)
         ),
         "top_joints": report.get("top_joints") if isinstance(report.get("top_joints"), list) else [],
+        "score_explanation": report.get("score_explanation") if isinstance(report.get("score_explanation"), dict) else None,
         "files": task.get("files") if isinstance(task.get("files"), dict) else {},
     }
 
@@ -485,4 +491,5 @@ def analysis_report_payload_from_summary(summary: dict[str, Any]) -> dict[str, A
         "beginner_summary": beginner_report.get("summary") if isinstance(beginner_report, dict) else None,
         "teaching_summary": teaching_report.get("summary") if isinstance(teaching_report, dict) else None,
         "top_joints": report.get("top_joints") if isinstance(report.get("top_joints"), list) else [],
+        "score_explanation": report.get("score_explanation") if isinstance(report.get("score_explanation"), dict) else None,
     }

@@ -6,10 +6,10 @@ from typing import Any
 
 @dataclass
 class ScoreWeights:
-    pose: float = 0.48
-    tempo: float = 0.34
-    smooth: float = 0.10
-    quality_penalty: float = 0.03
+    pose: float = 0.52
+    tempo: float = 0.28
+    smooth: float = 0.12
+    quality_penalty: float = 0.04
 
 
 @dataclass
@@ -66,10 +66,10 @@ class PipelineConfig:
     marker_topk_tempo: int = 6
     marker_topk_quality: int = 6
 
-    pose_alpha: float = 1.35
-    tempo_alpha: float = 0.9
-    smooth_alpha: float = 0.65
-    quality_penalty_scale: float = 10.0
+    pose_alpha: float = 1.20
+    tempo_alpha: float = 0.85
+    smooth_alpha: float = 0.60
+    quality_penalty_scale: float = 8.0
     score_weights: ScoreWeights = field(default_factory=ScoreWeights)
 
     sync_seek_threshold_sec: float = 0.25
