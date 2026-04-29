@@ -1015,6 +1015,17 @@ def _score(mean_w_joint: float, tempo_dev_area: float, err_curve: np.ndarray, lo
 
     w = cfg.score_weights
     total = w.pose * pose + w.tempo * tempo + w.smooth * smooth - w.quality_penalty * qpen
+
+    # Keep the score learner-friendly: poor tracking should mainly lower
+    # confidence, not automatically crush the practice score unless the
+    # visible motion evidence is also very weak.
+    if low_quality_ratio >= 0.95:
+        total = min(total, 72.0)
+    elif low_quality_ratio >= 0.85:
+        total = min(total, 78.0)
+    elif low_quality_ratio >= 0.70:
+        total = min(total, 85.0)
+
     total = float(np.clip(total, 0.0, 100.0))
 
     return ScoreBreakdown(pose, tempo, smooth, qpen, total)

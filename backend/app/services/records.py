@@ -73,7 +73,20 @@ def list_records_workspace(limit: int = 50) -> dict:
             item_issues = load_or_build_issue_index(item, get_analysis_report)
         except Exception:
             continue
-        issues.extend(item_issues)
+        normalized_issues = []
+        for issue in item_issues:
+            if not isinstance(issue, dict):
+                continue
+            normalized = dict(issue)
+            normalized["pipeline_id"] = pipeline_id
+            normalized["pair_name"] = item.get("pair_name") or normalized.get("pair_name")
+            normalized["teacher_video_id"] = item.get("teacher_video_id") or normalized.get("teacher_video_id")
+            normalized["user_video_id"] = item.get("user_video_id") or normalized.get("user_video_id")
+            normalized["finished_at"] = item.get("finished_at") or normalized.get("finished_at")
+            normalized["score_total"] = item.get("score_total", normalized.get("score_total"))
+            normalized["confidence_score"] = item.get("confidence_score", normalized.get("confidence_score"))
+            normalized_issues.append(normalized)
+        issues.extend(normalized_issues)
 
     issues.sort(key=lambda item: (str(item.get("finished_at") or ""), float(item.get("sec") or 0.0)), reverse=True)
 

@@ -6,10 +6,10 @@ from typing import Any
 
 @dataclass
 class ScoreWeights:
-    pose: float = 0.45
-    tempo: float = 0.25
-    smooth: float = 0.20
-    quality_penalty: float = 0.10
+    pose: float = 0.48
+    tempo: float = 0.34
+    smooth: float = 0.10
+    quality_penalty: float = 0.03
 
 
 @dataclass
@@ -48,12 +48,12 @@ class PipelineConfig:
     map_smooth_win_sec: float = 0.8
 
     tempo_win_sec: float = 0.6
-    tempo_fast_thr: float = 1.15
-    tempo_slow_thr: float = 0.85
+    tempo_fast_thr: float = 1.22
+    tempo_slow_thr: float = 0.78
     tempo_min_dur_sec: float = 1.2
     tempo_conf_quality_floor: float = 0.35
-    tempo_offset_tolerance_sec: float = 0.12
-    tempo_offset_bad_sec: float = 0.50
+    tempo_offset_tolerance_sec: float = 0.18
+    tempo_offset_bad_sec: float = 0.75
     tempo_offset_smooth_win_sec: float = 0.35
 
     local_match_window_sec: float = 1.0
@@ -66,10 +66,10 @@ class PipelineConfig:
     marker_topk_tempo: int = 6
     marker_topk_quality: int = 6
 
-    pose_alpha: float = 2.8
-    tempo_alpha: float = 2.0
-    smooth_alpha: float = 1.8
-    quality_penalty_scale: float = 25.0
+    pose_alpha: float = 1.35
+    tempo_alpha: float = 0.9
+    smooth_alpha: float = 0.65
+    quality_penalty_scale: float = 10.0
     score_weights: ScoreWeights = field(default_factory=ScoreWeights)
 
     sync_seek_threshold_sec: float = 0.25
