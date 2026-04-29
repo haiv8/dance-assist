@@ -209,12 +209,7 @@
               <span class="feedback-state-copy">正在读取该教师视频下的历史练习记录。</span>
             </div>
             <template v-else-if="projectDetail">
-              <div class="project-trend">
-                <div v-for="(point, index) in projectDetail.trend" :key="point.pipeline_id || `${point.finished_at || 'trend'}_${index}`" class="trend-point">
-                  <span class="trend-bar" :style="{ height: `${trendBarHeight(point.score_total)}%` }"></span>
-                  <small>{{ scoreText(point.score_total) }}</small>
-                </div>
-              </div>
+              <PracticeTrendCard :trend="projectDetail.trend" />
               <div class="project-records">
                 <button
                   v-for="record in projectDetail.records"
@@ -308,6 +303,7 @@ import { useRoute, useRouter } from "vue-router";
 import { deletePipelineTask, getPipelineResultSummary } from "../api/pipelines";
 import { getPracticeProject, getPracticeProjects } from "../api/records";
 import IssueList from "../components/records/IssueList.vue";
+import PracticeTrendCard from "../components/records/PracticeTrendCard.vue";
 import RecordDetailPanel from "../components/records/RecordDetailPanel.vue";
 import { useAiCoach } from "../composables/useAiCoach";
 import { isRunningTaskStatus, useRecordActions } from "../composables/useRecordActions";
@@ -824,12 +820,6 @@ function scoreText(value?: number | string | null) {
   return num.toFixed(1);
 }
 
-function trendBarHeight(value?: number | string | null) {
-  const num = Number(value);
-  if (!Number.isFinite(num)) return 8;
-  return Math.max(8, Math.min(100, num));
-}
-
 function formatDate(value?: string | null) {
   if (!value) return "--";
   const date = new Date(value);
@@ -1159,34 +1149,6 @@ onMounted(async () => {
   border-radius: 18px;
   border: 1px solid rgba(15, 143, 179, 0.14);
   background: rgba(248, 252, 255, 0.8);
-}
-
-.project-trend {
-  display: flex;
-  align-items: end;
-  gap: 8px;
-  min-height: 120px;
-  padding: 12px;
-  border-radius: 14px;
-  border: 1px solid rgba(15, 23, 42, 0.06);
-  background: rgba(255, 255, 255, 0.88);
-}
-
-.trend-point {
-  display: grid;
-  grid-template-rows: 1fr auto;
-  align-items: end;
-  justify-items: center;
-  gap: 6px;
-  width: 34px;
-  min-height: 96px;
-}
-
-.trend-bar {
-  width: 100%;
-  min-height: 8px;
-  border-radius: 999px 999px 6px 6px;
-  background: linear-gradient(180deg, var(--accent) 0%, #eb8d56 100%);
 }
 
 .project-records {
