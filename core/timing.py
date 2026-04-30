@@ -25,3 +25,17 @@ class StageTimer:
             "total_sec": round(max(0.0, time.perf_counter() - self._started_at), 6),
             "stages": list(self._stages),
         }
+
+    def snapshot_with_current_stage(self, name: str) -> dict[str, object]:
+        now = time.perf_counter()
+        stages = [
+            *self._stages,
+            {
+                "name": name,
+                "duration_sec": round(max(0.0, now - self._last_at), 6),
+            },
+        ]
+        return {
+            "total_sec": round(max(0.0, now - self._started_at), 6),
+            "stages": stages,
+        }

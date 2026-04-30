@@ -399,15 +399,9 @@ def _check_recent_pipeline_failure() -> dict[str, Any]:
 def collect_health_report() -> dict[str, Any]:
     checks = {
         "backend_service": _check_backend_service(),
-        "app_home": _check_writable_dir(
-            "app_home",
-            "运行目录",
-            settings.APP_HOME,
-            "请检查 DANCE_ASSIST_HOME 权限，或改用当前用户可写的运行目录。",
-        ),
         "runtime_writable": _check_writable_dir(
             "runtime_writable",
-            ".runtime / APP_HOME",
+            "运行目录",
             settings.APP_HOME,
             "请确认运行目录可写；桌面端需要在这里保存缓存、上传和状态文件。",
         ),

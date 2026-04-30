@@ -1831,8 +1831,7 @@ def run(
         dbg = _save_debug(out_dir, i_path, j_path, err_curve, markers, tempo_rel, tempo_segments, tq.frame_quality)
         dump_json(out_dir / "debug_index.json", dbg)
 
-    timer.checkpoint("output_writing")
-    performance = timer.snapshot()
+    performance = timer.snapshot_with_current_stage("output_writing")
     report["performance"] = performance
     summary["performance"] = performance
     dump_json(out_dir / "report.json", report)

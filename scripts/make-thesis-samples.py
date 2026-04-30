@@ -238,6 +238,7 @@ def generate_samples(args: argparse.Namespace) -> dict[str, Any]:
         "teacher_source": str(teacher_path),
         "user_source": str(user_path),
         "output_dir": str(output_dir),
+        "audio_note": "Generated perturbation samples are intended for pose, tempo, confidence, and issue-count experiments. Variant videos may remove audio and should not be used to evaluate audio alignment.",
         "samples": samples,
     }
     manifest_path = output_dir / "manifest.json"
@@ -274,6 +275,7 @@ def main(argv: list[str] | None = None) -> int:
 
     print(f"generated {len(manifest['samples'])} thesis samples")
     print(f"manifest: {manifest['manifest_path']}")
+    print(manifest["audio_note"])
     for sample in manifest["samples"]:
         print(f"- {sample['sample_id']}: {sample['path']}")
     return 0

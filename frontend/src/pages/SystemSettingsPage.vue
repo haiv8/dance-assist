@@ -341,7 +341,7 @@ const checkItems = computed<CheckItem[]>(() => {
     makeCheckItem("model_file", "MediaPipe 模型", checks.model_file),
     makeCheckItem("ffmpeg", "ffmpeg / ffprobe", checks.ffmpeg),
     makeCheckItem("outputs_writable", "outputs 目录", checks.outputs_writable),
-    makeCheckItem("runtime_writable", "运行目录", checks.runtime_writable || checks.app_home),
+    makeCheckItem("runtime_writable", "运行目录", checks.runtime_writable),
     makeCheckItem("disk", "磁盘空间", checks.disk),
     makeCheckItem("redis", "Redis", checks.redis),
     makeCheckItem("postgresql", "PostgreSQL", checks.postgresql),

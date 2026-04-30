@@ -173,3 +173,5 @@ python scripts/make-thesis-samples.py --teacher-path path\to\teacher.mp4 --user-
 ```
 
 Generated samples include original copy, 0.8x slow, 1.2x fast, 2s start-offset trim, low-quality 480p, and optional blur with `--include-blur`.
+
+Note: generated perturbation samples are mainly for pose, tempo, confidence, and issue-count experiments. Some variants remove audio, so they should not be used to evaluate audio alignment.

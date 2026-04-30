@@ -67,10 +67,11 @@ const priorityItems = computed(() => {
 const lowConfidence = computed(() => isLowConfidence(props.confidenceScore));
 
 function issueTypeText(value?: string) {
-  if (value === "pose_error") return "动作误差";
-  if (value === "tempo") return "节奏异常";
-  if (value === "confidence") return "可信度风险";
-  if (value === "tracking_bad") return "跟踪问题";
+  const type = String(value || "").trim();
+  if (type === "pose" || type === "pose_error") return "动作误差";
+  if (type === "tempo" || type === "tempo_fast" || type === "tempo_slow") return "节奏异常";
+  if (type === "confidence" || type === "quality") return "可信度风险";
+  if (type === "tracking" || type === "tracking_bad" || type === "tracking_issue") return "跟踪问题";
   return value || "待定";
 }
 
@@ -82,8 +83,19 @@ function severityText(value?: string) {
 }
 
 function fallbackAction(type?: string) {
-  if (type === "tempo") return "建议慢速回放该片段，先对齐动作进入和结束的节奏。";
-  if (type === "confidence" || type === "tracking_bad") return "建议先检查全身入镜、遮挡和光照，再结合视频判断。";
+  const normalized = String(type || "").trim();
+  if (normalized === "tempo" || normalized === "tempo_fast" || normalized === "tempo_slow") {
+    return "建议慢速回放该片段，先对齐动作进入和结束的节奏。";
+  }
+  if (
+    normalized === "confidence" ||
+    normalized === "quality" ||
+    normalized === "tracking" ||
+    normalized === "tracking_bad" ||
+    normalized === "tracking_issue"
+  ) {
+    return "建议先检查全身入镜、遮挡和光照，再结合视频判断。";
+  }
   return "建议先慢速拆解该动作，再回到完整片段串联练习。";
 }
 
