@@ -14,9 +14,11 @@ from typing import Any
 import numpy as np
 from fastapi import HTTPException
 
+from app.services.error_mapping import build_failure_payload, input_quality_failure, map_pipeline_exception
 from app.services.issue_index import delete_issue_index, save_issue_index
 from app.services.pipeline_executor import get_pipeline_executor_backend, submit_pipeline_job
 from app.services.storage import get_video_meta
+from app.services.video_quality import check_video_pair_quality
 from app.services.task_store import (
     delete_pipeline_record,
     get_pipeline_failure_stats as load_pipeline_failure_stats,
@@ -115,17 +117,7 @@ def _normalize_attempt_count(attempt_count: int | None) -> int:
 
 
 def _classify_pipeline_error(exc: Exception) -> str:
-    if isinstance(exc, HTTPException):
-        if exc.status_code in {400, 404, 413}:
-            return "input_error"
-        return "request_error"
-    if isinstance(exc, FileNotFoundError):
-        return "missing_file"
-    if isinstance(exc, subprocess.SubprocessError):
-        return "process_error"
-    if isinstance(exc, TimeoutError):
-        return "timeout"
-    return "internal_error"
+    return map_pipeline_exception(exc)["error_type"]
 
 
 def _record_pipeline_event(
@@ -171,7 +163,7 @@ def _mark_task_canceled(
             "message": message,
             "finished_at": existing.get("finished_at") or _utc_now(),
             "executor": executor or existing.get("executor"),
-            "error_type": "canceled",
+            **build_failure_payload("canceled", raw_error=message),
             "cancel_requested": True,
             "cancel_requested_at": cancel_requested_at,
         },
@@ -183,7 +175,7 @@ def _mark_task_canceled(
             status="canceled",
             message=message,
             executor=executor or str(existing.get("executor", "")).strip() or None,
-            payload={"cancel_requested_at": cancel_requested_at},
+            payload={**build_failure_payload("canceled", raw_error=message), "cancel_requested_at": cancel_requested_at},
         )
     return task
 
@@ -224,7 +216,10 @@ def _raise_if_pipeline_timeout(
         {
             "stage": stage_label,
             "message": f"pipeline timed out after {int(elapsed_sec)}s during {stage_label}",
-            "error_type": "timeout",
+            **build_failure_payload(
+                "timeout",
+                raw_error=f"pipeline timed out after {int(elapsed_sec)}s during {stage_label}",
+            ),
             "timeout_sec": normalized_timeout,
             "timeout_at": _utc_now(),
         },
@@ -236,6 +231,10 @@ def _raise_if_pipeline_timeout(
         message=f"pipeline timed out after {int(elapsed_sec)}s during {stage_label}",
         executor=executor,
         payload={
+            **build_failure_payload(
+                "timeout",
+                raw_error=f"pipeline timed out after {int(elapsed_sec)}s during {stage_label}",
+            ),
             "timeout_sec": normalized_timeout,
             "elapsed_sec": round(elapsed_sec, 3),
             "stage": stage_label,
@@ -330,6 +329,32 @@ def _prepare_video(src: Path, dst_mp4: Path, overwrite: bool) -> Path:
     # Always normalize to CFR mp4 for stable downstream pose/timeline/overlay sync.
     _ffmpeg_convert_to_mp4(src, dst_mp4)
     return dst_mp4
+
+
+def _write_json(path: Path, payload: dict[str, Any]) -> None:
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _attach_input_quality(pair_dir: Path, report: dict[str, Any] | None, input_quality: dict[str, Any]) -> dict[str, Any] | None:
+    if not isinstance(report, dict):
+        return report
+
+    report["input_quality"] = input_quality
+    report_path = pair_dir / "report.json"
+    _write_json(report_path, report)
+
+    summary_path = pair_dir / "summary.json"
+    if summary_path.exists():
+        try:
+            summary = json.loads(summary_path.read_text(encoding="utf-8"))
+        except Exception:
+            summary = {}
+        if isinstance(summary, dict):
+            summary["input_quality_level"] = input_quality.get("level")
+            summary["input_quality_summary"] = input_quality.get("summary")
+            _write_json(summary_path, summary)
+
+    return report
 
 
 def _ensure_pose_cache(
@@ -447,6 +472,9 @@ def _pipeline_worker(
 
         teacher_meta = get_video_meta(teacher_video_id, role="teacher")
         user_meta = get_video_meta(user_video_id, role="user")
+        input_quality = check_video_pair_quality(teacher_video_id=teacher_video_id, user_video_id=user_video_id)
+        if input_quality.get("level") == "error":
+            raise input_quality_failure(input_quality)
 
         teacher_stem = f"teacher_{teacher_video_id}"
         user_stem = f"user_{user_video_id}"
@@ -575,6 +603,7 @@ def _pipeline_worker(
         )
 
         report = json.loads(report_path.read_text(encoding="utf-8")) if report_path.exists() else None
+        report = _attach_input_quality(pair_dir, report, input_quality)
         timeline = json.loads(timeline_json.read_text(encoding="utf-8")) if timeline_json.exists() else None
         if timeline is None:
             timeline = {}
@@ -623,6 +652,9 @@ def _pipeline_worker(
             timeline=timeline,
             files=files,
             error_type=None,
+            error_message=None,
+            error_suggestion=None,
+            raw_error=None,
         )
         try:
             save_issue_index(analysis_report_payload_from_summary(completed_task))
@@ -640,15 +672,15 @@ def _pipeline_worker(
         _cleanup_old_output_pairs(exclude_pair=pair_name)
         return True
     except Exception as exc:
-        error_type = _classify_pipeline_error(exc)
+        failure = map_pipeline_exception(exc)
         _update_task_progress(
             pipeline_id,
             stage="failed",
-            message=f"{type(exc).__name__}: {exc}",
+            message=failure["error_message"],
             progress=1.0,
             status="failed",
             error=traceback.format_exc(),
-            error_type=error_type,
+            **failure,
             finished_at=_utc_now(),
             attempt_count=current_attempt,
             retry_count=max(0, current_attempt - 1),
@@ -657,9 +689,9 @@ def _pipeline_worker(
             pipeline_id,
             "failed",
             status="failed",
-            message=f"{type(exc).__name__}: {exc}",
+            message=failure["error_message"],
             executor=resolved_executor,
-            payload={"error_type": error_type, "attempt_count": current_attempt, "timeout_sec": resolved_timeout_sec},
+            payload={**failure, "attempt_count": current_attempt, "timeout_sec": resolved_timeout_sec},
         )
         if raise_on_error:
             raise
@@ -765,6 +797,9 @@ def _enqueue_pipeline_task(
         "attempt_count": 1,
         "retry_count": 0,
         "error_type": None,
+        "error_message": None,
+        "error_suggestion": None,
+        "raw_error": None,
         "report": None,
         "timeline": None,
         "files": None,
@@ -801,18 +836,18 @@ def _enqueue_pipeline_task(
             overwrite=overwrite,
         )
     except Exception as exc:
-        error_type = _classify_pipeline_error(exc)
+        failure = map_pipeline_exception(exc)
         _update_task_progress(
             pipeline_id,
             stage="failed",
-            message=f"{type(exc).__name__}: {exc}",
+            message=failure["error_message"],
             progress=1.0,
             status="failed",
             finished_at=_utc_now(),
-            error_type=error_type,
+            **failure,
         )
         failure_payload = {
-            "error_type": error_type,
+            **failure,
             "attempt_count": 1,
             "timeout_sec": timeout_sec,
             "source_event": event_type,
@@ -823,7 +858,7 @@ def _enqueue_pipeline_task(
             pipeline_id,
             "submit_failed",
             status="failed",
-            message=f"{type(exc).__name__}: {exc}",
+            message=failure["error_message"],
             executor=executor_backend,
             payload=failure_payload,
         )

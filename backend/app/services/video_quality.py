@@ -65,7 +65,10 @@ def _run_ffprobe(path: Path) -> dict[str, Any]:
         "-show_streams",
         str(path),
     ]
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=20)
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=20)
+    except FileNotFoundError as exc:
+        raise RuntimeError("ffprobe executable not found") from exc
     if result.returncode != 0:
         raise RuntimeError(result.stderr.strip() or "ffprobe failed")
     try:

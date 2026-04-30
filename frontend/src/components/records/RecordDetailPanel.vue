@@ -35,6 +35,36 @@
     <div v-else-if="detail" class="detail-stack">
       <ConfidenceBanner :confidence-score="detail.report?.confidence?.score ?? detail.confidence_score" />
 
+      <div v-if="detail.status === 'failed'" class="list-item-card failure-reason-card">
+        <div class="task-item-head">
+          <strong>失败原因</strong>
+          <span class="tag danger">{{ errorTypeText(detail.error_type) }}</span>
+        </div>
+        <span class="helper-text">{{ detail.error_message || detail.message || "本次分析未成功完成。" }}</span>
+        <span v-if="detail.error_suggestion" class="helper-text failure-suggestion">{{ detail.error_suggestion }}</span>
+      </div>
+
+      <div v-if="inputQuality" class="list-item-card input-quality-card" :data-tone="inputQualityTone">
+        <div class="task-item-head">
+          <strong>输入质量</strong>
+          <span class="tag" :class="inputQualityTone">{{ inputQualityLevelText }}</span>
+        </div>
+        <span class="helper-text">{{ inputQuality.summary || "本次分析已记录输入视频质量信息。" }}</span>
+        <div class="input-quality-grid">
+          <div class="metric-chip">
+            <strong>教师视频</strong>
+            <span>{{ videoMetaText(inputQuality.teacher_meta) }}</span>
+          </div>
+          <div class="metric-chip">
+            <strong>学员视频</strong>
+            <span>{{ videoMetaText(inputQuality.user_meta) }}</span>
+          </div>
+        </div>
+        <ul v-if="inputQualityRecommendations.length" class="quality-recommendations">
+          <li v-for="item in inputQualityRecommendations" :key="item">{{ item }}</li>
+        </ul>
+      </div>
+
       <div class="metric-row compact-stats">
         <div class="metric-chip"><strong>状态</strong><span>{{ statusText(detail.status) }}</span></div>
         <div class="metric-chip"><strong>阶段</strong><span>{{ stageText(detail.stage, detail.status) }}</span></div>
@@ -51,6 +81,28 @@
         <div class="metric-chip"><strong>可信度</strong><span>{{ detailConfidenceText }}</span></div>
         <div class="metric-chip"><strong>开始时间</strong><span>{{ formatDate(detail.started_at || detail.queued_at) }}</span></div>
         <div class="metric-chip"><strong>完成时间</strong><span>{{ formatDate(detail.finished_at || detail.updated_at) }}</span></div>
+      </div>
+
+      <div class="list-item-card record-note-card">
+        <div class="task-item-head">
+          <strong>复盘备注</strong>
+          <button class="secondary-button" type="button" :disabled="flagSaving" @click="$emit('toggleStar')">
+            {{ item.starred ? "★ 已标重点" : "☆ 标为重点" }}
+          </button>
+        </div>
+        <textarea
+          :value="noteDraft"
+          rows="3"
+          maxlength="500"
+          placeholder="写一点复盘备注，例如：论文实验样例、节奏偏快、需要重点回看..."
+          @input="$emit('updateNoteDraft', ($event.target as HTMLTextAreaElement).value)"
+        />
+        <div class="settings-maintenance-foot">
+          <span class="helper-text">{{ item.flag_updated_at ? `上次保存：${formatDate(item.flag_updated_at)}` : "备注会保存在本地 record_flags.json，不修改原始报告。" }}</span>
+          <button type="button" :disabled="flagSaving" @click="$emit('saveNote')">
+            {{ flagSaving ? "保存中..." : "保存备注" }}
+          </button>
+        </div>
       </div>
 
       <ScoreExplanationCard :detail="detail" :issue-count="issues.length" />
@@ -155,6 +207,8 @@ const props = defineProps<{
   copying: boolean;
   deleting: boolean;
   canceling: boolean;
+  noteDraft: string;
+  flagSaving: boolean;
 }>();
 
 defineEmits<{
@@ -164,9 +218,34 @@ defineEmits<{
   loadAi: [];
   openCompare: [];
   jumpIssue: [issue: IssueReplayItem];
+  toggleStar: [];
+  saveNote: [];
+  updateNoteDraft: [value: string];
 }>();
 
 const detailConfidenceText = computed(() => confidenceText(props.detail?.report?.confidence?.score ?? props.detail?.confidence_score));
+const inputQuality = computed(() => {
+  const value = props.detail?.report?.input_quality;
+  return value && typeof value === "object" ? value as Record<string, any> : null;
+});
+const inputQualityTone = computed(() => {
+  const level = String(inputQuality.value?.level || "").toLowerCase();
+  if (level === "good") return "good";
+  if (level === "warning") return "warning";
+  if (level === "error") return "danger";
+  return "neutral";
+});
+const inputQualityLevelText = computed(() => {
+  const level = String(inputQuality.value?.level || "").toLowerCase();
+  if (level === "good") return "良好";
+  if (level === "warning") return "需留意";
+  if (level === "error") return "不可读";
+  return "暂无";
+});
+const inputQualityRecommendations = computed(() => {
+  const items = inputQuality.value?.recommendations;
+  return Array.isArray(items) ? items.filter((item) => typeof item === "string" && item.trim()).slice(0, 3) : [];
+});
 const detailConfidenceSummaryText = computed(() =>
   normalizedConfidenceSummary(props.detail?.report?.confidence, props.detail?.report?.confidence?.summary || props.detail?.confidence_summary),
 );
@@ -214,6 +293,21 @@ function statusText(status?: string | null) {
   return status || "未知";
 }
 
+function errorTypeText(value?: string | null) {
+  const map: Record<string, string> = {
+    video_missing: "视频文件不存在",
+    video_unreadable: "视频无法读取",
+    ffmpeg_missing: "缺少 ffmpeg",
+    pose_cache_missing: "姿态缓存缺失",
+    model_missing: "模型缺失",
+    low_quality_input: "输入质量不足",
+    pipeline_internal_error: "内部异常",
+    canceled: "用户取消",
+    timeout: "任务超时",
+  };
+  return value ? map[value] || value : "未知原因";
+}
+
 function stageText(stage?: string | null, status?: string | null) {
   if (stage === "queued") return "已进入队列";
   if (stage === "preparing_inputs") return "准备素材";
@@ -239,6 +333,20 @@ function confidenceText(value?: number | string | null) {
   const num = Number(value);
   if (!Number.isFinite(num)) return "--";
   return `${Math.round(num * 100)}% (${confidenceLevelText(num)})`;
+}
+
+function videoMetaText(meta?: Record<string, any> | null) {
+  if (!meta || typeof meta !== "object") return "暂无元信息";
+  const duration = Number(meta.duration_sec);
+  const width = Number(meta.width);
+  const height = Number(meta.height);
+  const fps = Number(meta.fps);
+  const parts = [
+    Number.isFinite(duration) && duration > 0 ? `${duration.toFixed(1)}s` : "",
+    Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0 ? `${Math.round(width)}x${Math.round(height)}` : "",
+    Number.isFinite(fps) && fps > 0 ? `${fps.toFixed(1)}fps` : "",
+  ].filter(Boolean);
+  return parts.length ? parts.join(" / ") : "暂无元信息";
 }
 
 function scoreText(value?: number | string | null) {
@@ -295,6 +403,67 @@ function formatDate(value?: string | null) {
   flex-wrap: wrap;
 }
 
+.record-note-card {
+  gap: 10px;
+}
+
+.record-note-card textarea {
+  width: 100%;
+  resize: vertical;
+  min-height: 84px;
+}
+
+.record-note-card .settings-maintenance-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.failure-reason-card {
+  border-color: rgba(180, 35, 24, 0.18);
+  background: rgba(254, 242, 242, 0.72);
+  gap: 8px;
+}
+
+.failure-suggestion {
+  color: var(--text);
+  font-weight: 650;
+}
+
+.input-quality-card {
+  gap: 10px;
+}
+
+.input-quality-card[data-tone="good"] {
+  border-color: rgba(22, 163, 74, 0.18);
+  background: rgba(240, 253, 244, 0.58);
+}
+
+.input-quality-card[data-tone="warning"] {
+  border-color: rgba(217, 119, 6, 0.22);
+  background: rgba(255, 251, 235, 0.72);
+}
+
+.input-quality-card[data-tone="danger"] {
+  border-color: rgba(180, 35, 24, 0.2);
+  background: rgba(254, 242, 242, 0.72);
+}
+
+.input-quality-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.quality-recommendations {
+  margin: 0;
+  padding-left: 1.1rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.7;
+}
+
 .issue-chip-list {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
@@ -330,6 +499,7 @@ function formatDate(value?: string | null) {
 
 @media (max-width: 1024px) {
   .compact-stats,
+  .input-quality-grid,
   .issue-chip-list {
     grid-template-columns: 1fr;
   }

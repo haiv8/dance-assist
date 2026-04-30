@@ -82,6 +82,9 @@ export interface PipelineRunResponse {
   attempt_count?: number | null;
   retry_count?: number | null;
   error_type?: string | null;
+  error_message?: string | null;
+  error_suggestion?: string | null;
+  raw_error?: string | null;
   stage?: string | null;
   progress?: number | null;
   cancel_requested?: boolean | null;
@@ -103,6 +106,9 @@ export interface PipelineStatusResponse {
   attempt_count?: number | null;
   retry_count?: number | null;
   error_type?: string | null;
+  error_message?: string | null;
+  error_suggestion?: string | null;
+  raw_error?: string | null;
   stage?: string | null;
   progress?: number | null;
   cancel_requested?: boolean | null;
@@ -139,6 +145,9 @@ export interface PipelineResultResponse {
   attempt_count?: number | null;
   retry_count?: number | null;
   error_type?: string | null;
+  error_message?: string | null;
+  error_suggestion?: string | null;
+  raw_error?: string | null;
   stage?: string | null;
   progress?: number | null;
   cancel_requested?: boolean | null;
@@ -164,6 +173,9 @@ export interface PipelineResultSummaryResponse {
   attempt_count?: number | null;
   retry_count?: number | null;
   error_type?: string | null;
+  error_message?: string | null;
+  error_suggestion?: string | null;
+  raw_error?: string | null;
   stage?: string | null;
   progress?: number | null;
   cancel_requested?: boolean | null;
@@ -216,6 +228,9 @@ export interface PipelineTaskListItem {
   attempt_count?: number | null;
   retry_count?: number | null;
   error_type?: string | null;
+  error_message?: string | null;
+  error_suggestion?: string | null;
+  raw_error?: string | null;
   queued_at?: string | null;
   started_at?: string | null;
   finished_at?: string | null;
@@ -289,6 +304,9 @@ export interface RecordWorkspaceItem extends PipelineTaskListItem {
   files?: Record<string, string> | null;
   has_report: boolean;
   issue_count: number;
+  starred?: boolean;
+  user_note?: string | null;
+  flag_updated_at?: string | null;
 }
 
 export interface RecordWorkspaceIssueItem {
@@ -331,6 +349,13 @@ export interface RecordWorkspaceResponse {
   total: number;
   issue_total: number;
   limit: number;
+}
+
+export interface RecordFlagsResponse {
+  pipeline_id: string;
+  starred: boolean;
+  note: string;
+  updated_at?: string | null;
 }
 
 export interface PracticeProjectItem {

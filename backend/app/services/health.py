@@ -378,12 +378,14 @@ def _check_recent_pipeline_failure() -> dict[str, Any]:
     pipeline_id = str(latest.get("pipeline_id") or "")
     if status == "failed":
         error_type = latest.get("error_type") or "unknown"
+        error_message = latest.get("error_message") or f"最近任务失败：{error_type}"
+        error_suggestion = latest.get("error_suggestion") or "建议打开分析记录查看失败详情，并优先检查视频是否可读、模型文件和 ffmpeg 是否正常。"
         return _check(
             "recent_pipeline",
             "warn",
             "最近一次 pipeline",
-            f"最近任务失败：{pipeline_id}（{error_type}）。",
-            "建议打开分析记录查看失败详情；优先检查视频是否可读、模型文件和 ffmpeg 是否正常。",
+            f"{error_message}（{pipeline_id} / {error_type}）。",
+            str(error_suggestion),
             latest=latest,
         )
     return _check(

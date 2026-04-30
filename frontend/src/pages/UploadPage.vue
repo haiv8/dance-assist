@@ -149,10 +149,15 @@
             <span class="helper-text">示范视频会优先作为分析左侧输入。</span>
           </div>
 
-          <div v-if="!teacherItems.length" class="feedback-state" data-tone="empty">
-            <strong class="feedback-state-title">暂无教师素材</strong>
-            <span class="feedback-state-copy">先补入教师示范视频，后续推荐配对才会完整。</span>
-          </div>
+          <EmptyState
+            v-if="!teacherItems.length"
+            title="先上传一段教师示范视频"
+            copy="教师视频会作为对照标准。上传后，可以继续补充学员练习视频。"
+          >
+            <template #actions>
+              <button class="secondary-button" type="button" @click="role = 'teacher'">上传教师视频</button>
+            </template>
+          </EmptyState>
 
           <ul v-else class="list-clean asset-list-dense">
             <li v-for="item in teacherItems" :key="item.video_id" class="asset-row">
@@ -216,10 +221,15 @@
             <span class="helper-text">练习视频会优先作为分析右侧输入。</span>
           </div>
 
-          <div v-if="!userItems.length" class="feedback-state" data-tone="empty">
-            <strong class="feedback-state-title">暂无学员素材</strong>
-            <span class="feedback-state-copy">补入学员练习后，就可以直接进入动作对照分析。</span>
-          </div>
+          <EmptyState
+            v-if="!userItems.length"
+            title="再上传一段学员练习视频"
+            copy="学员视频会和教师示范配对分析。两类素材都有后，就可以开始对照。"
+          >
+            <template #actions>
+              <button class="secondary-button" type="button" @click="role = 'user'">上传学员视频</button>
+            </template>
+          </EmptyState>
 
           <ul v-else class="list-clean asset-list-dense">
             <li v-for="item in userItems" :key="item.video_id" class="asset-row">
@@ -285,6 +295,7 @@
 import { computed, onMounted, ref } from "vue";
 import { RouterLink, useRouter } from "vue-router";
 import { absMediaUrl } from "../api/http";
+import EmptyState from "../components/EmptyState.vue";
 import { listPipelineTasks } from "../api/pipelines";
 import { deleteVideo, listVideos, renameVideo, uploadVideo } from "../api/videos";
 import { friendlyError } from "../utils/errors";

@@ -78,6 +78,22 @@
             </div>
           </div>
 
+          <EmptyState
+            v-if="!loading && (!teacherItems.length || !userItems.length)"
+            title="素材还不够"
+            copy="先去素材库上传一段教师示范视频和一段学员练习视频。"
+          >
+            <template #actions>
+              <RouterLink class="link-button secondary-button" to="/upload">去上传视频</RouterLink>
+            </template>
+          </EmptyState>
+
+          <EmptyState
+            v-else-if="!loading && (!teacherId || !userId)"
+            title="先从素材库选择教师和学员视频"
+            copy="两段视频都选好后，系统会先做质量检查，再允许发起分析。"
+          />
+
           <label class="simple-check">
             <input type="checkbox" v-model="overwrite" />
             <span class="check-mark" aria-hidden="true"></span>
@@ -416,9 +432,10 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
-import { useRoute } from "vue-router";
+import { RouterLink, useRoute } from "vue-router";
 import { getAiCoachReport } from "../api/ai";
 import { absMediaUrl } from "../api/http";
+import EmptyState from "../components/EmptyState.vue";
 import ConfidenceBanner from "../components/records/ConfidenceBanner.vue";
 import {
   cancelPipeline,

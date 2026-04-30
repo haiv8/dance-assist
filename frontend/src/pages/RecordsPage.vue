@@ -10,6 +10,9 @@
           <button class="secondary-button" :disabled="loading || issueLoading" @click="refreshWorkspace">
             {{ loading || issueLoading ? "刷新中..." : "刷新记录" }}
           </button>
+          <button class="secondary-button" :disabled="exportingCsv" @click="exportRecordsCsv">
+            {{ exportingCsv ? "导出中..." : "导出 CSV" }}
+          </button>
           <button @click="goToCompare">开始新分析</button>
         </div>
       </div>
@@ -143,25 +146,42 @@
         <span class="feedback-state-copy">正在从已完成分析中提取问题标记和可信度风险，请稍候。</span>
       </div>
 
-      <div v-else-if="activeTab === 'issues' && !filteredIssues.length" class="feedback-state" data-tone="empty">
-        <strong class="feedback-state-title">当前筛选下没有问题片段</strong>
-        <span class="feedback-state-copy">可以放宽筛选条件，或先回到开始分析页生成新的结果。</span>
-      </div>
+      <EmptyState
+        v-else-if="activeTab === 'issues' && !filteredIssues.length"
+        title="当前没有可回放的问题片段"
+        copy="当前没有可回放的问题片段，可能是分析未完成或报告没有生成 issues。"
+      >
+        <template #actions>
+          <button class="secondary-button" type="button" @click="goToCompare">去开始分析</button>
+        </template>
+      </EmptyState>
 
       <div v-else-if="activeTab === 'projects' && projectLoading" class="feedback-state" data-tone="loading">
         <strong class="feedback-state-title">练习项目整理中</strong>
         <span class="feedback-state-copy">正在按教师视频聚合同一舞蹈片段下的多次分析记录。</span>
       </div>
 
-      <div v-else-if="activeTab === 'projects' && !filteredProjects.length" class="feedback-state" data-tone="empty">
-        <strong class="feedback-state-title">当前还没有练习项目</strong>
-        <span class="feedback-state-copy">完成至少一条分析记录后，系统会自动按教师视频生成练习项目。</span>
-      </div>
+      <EmptyState
+        v-else-if="activeTab === 'projects' && !filteredProjects.length"
+        title="至少需要两次分析才能观察趋势"
+        copy="围绕同一段教师示范完成两次或更多练习分析后，这里会显示练习项目和进步变化。"
+      >
+        <template #actions>
+          <button class="secondary-button" type="button" @click="goToCompare">继续分析一次</button>
+        </template>
+      </EmptyState>
 
-      <div v-else-if="activeTab !== 'issues' && !filteredRecords.length" class="feedback-state" data-tone="empty">
-        <strong class="feedback-state-title">当前筛选下没有分析记录</strong>
-        <span class="feedback-state-copy">可以切换状态筛选，或发起一轮新的动作分析。</span>
-      </div>
+      <EmptyState
+        v-else-if="activeTab !== 'issues' && !filteredRecords.length"
+        :title="records.length ? '当前筛选下没有分析记录' : '还没有分析记录'"
+        :copy="records.length ? '可以切换状态筛选，或清空搜索条件。' : '完成一次分析后，这里会显示报告和问题片段。'"
+      >
+        <template #actions>
+          <button class="secondary-button" type="button" @click="goToCompare">
+            {{ records.length ? "开始新分析" : "开始第一次分析" }}
+          </button>
+        </template>
+      </EmptyState>
 
       <IssueList
         v-else-if="activeTab === 'issues'"
@@ -242,6 +262,16 @@
             </label>
             <button
               type="button"
+              class="record-star-button"
+              :class="{ active: item.starred }"
+              :disabled="flagSavingId === item.pipeline_id"
+              :title="item.starred ? '取消重点' : '标为重点'"
+              @click.stop="toggleRecordStar(item)"
+            >
+              {{ item.starred ? "★" : "☆" }}
+            </button>
+            <button
+              type="button"
               class="record-row dense-row"
               :class="{ active: selectedRecordId === item.pipeline_id }"
               @click="toggleRecord(item.pipeline_id)"
@@ -260,7 +290,7 @@
               </div>
               <div class="dense-col">
                 <strong class="mono-col">{{ formatDate(item.updated_at || item.finished_at || item.started_at || item.queued_at) }}</strong>
-                <span class="helper-text">{{ item.error_type ? `异常：${item.error_type}` : `执行器：${item.executor || "--"}` }}</span>
+                <span class="helper-text">{{ item.status === "failed" ? `失败：${errorTypeText(item.error_type)}` : `执行器：${item.executor || "--"}` }}</span>
               </div>
             </button>
           </div>
@@ -289,6 +319,11 @@
               @load-ai="loadDetailAiCoach(item.pipeline_id)"
               @open-compare="openSelectedInCompare"
               @jump-issue="jumpIssueToCompare"
+              :note-draft="noteDraft"
+              :flag-saving="flagSavingId === item.pipeline_id"
+              @toggle-star="toggleRecordStar(item)"
+              @save-note="saveRecordNote(item.pipeline_id)"
+              @update-note-draft="noteDraft = $event"
             />
           </div>
         </div>
@@ -301,7 +336,8 @@
 import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { deletePipelineTask, getPipelineResultSummary } from "../api/pipelines";
-import { getPracticeProject, getPracticeProjects } from "../api/records";
+import { downloadRecordsCsv, getPracticeProject, getPracticeProjects, updateRecordFlags } from "../api/records";
+import EmptyState from "../components/EmptyState.vue";
 import IssueList from "../components/records/IssueList.vue";
 import PracticeTrendCard from "../components/records/PracticeTrendCard.vue";
 import RecordDetailPanel from "../components/records/RecordDetailPanel.vue";
@@ -321,7 +357,7 @@ import type {
   RecordWorkspaceItem,
 } from "../types/video";
 
-type WorkspaceTab = "all" | "running" | "completed" | "projects" | "issues";
+type WorkspaceTab = "all" | "starred" | "running" | "completed" | "projects" | "issues";
 type RecordItem = RecordWorkspaceItem;
 
 const router = useRouter();
@@ -329,6 +365,7 @@ const route = useRoute();
 
 const tabs: Array<{ key: WorkspaceTab; label: string }> = [
   { key: "all", label: "全部记录" },
+  { key: "starred", label: "重点记录" },
   { key: "running", label: "进行中" },
   { key: "completed", label: "已完成" },
   { key: "projects", label: "练习项目" },
@@ -354,6 +391,9 @@ const projectError = ref("");
 const selectedProjectId = ref("");
 const projectDetail = ref<PracticeProjectDetailResponse | null>(null);
 const projectDetailLoading = ref(false);
+const exportingCsv = ref(false);
+const flagSavingId = ref("");
+const noteDraft = ref("");
 
 const selectedRecordId = ref("");
 const selectedIssueId = ref("");
@@ -401,6 +441,7 @@ const filteredRecords = computed(() => {
     const text = `${item.pair_name || ""} ${item.pipeline_id}`.toLowerCase();
     const matchesKeyword = !keyword || text.includes(keyword);
 
+    if (activeTab.value === "starred" && !item.starred) return false;
     if (activeTab.value === "running" && item.status !== "pending" && item.status !== "running") return false;
     if (activeTab.value === "completed" && item.status !== "done") return false;
     if (statusFilter.value !== "all" && item.status !== statusFilter.value) return false;
@@ -483,7 +524,7 @@ function toggleSelectAllVisible() {
 }
 
 function parseTab(value: unknown): WorkspaceTab {
-  if (value === "running" || value === "completed" || value === "projects" || value === "issues" || value === "all") return value;
+  if (value === "starred" || value === "running" || value === "completed" || value === "projects" || value === "issues" || value === "all") return value;
   return "all";
 }
 
@@ -503,6 +544,41 @@ function goToCompare() {
 
 async function refreshWorkspace() {
   await loadWorkspace();
+}
+
+function csvExportStatus(): "done" | "failed" | "running" | undefined {
+  if (statusFilter.value === "done" || statusFilter.value === "failed" || statusFilter.value === "running") {
+    return statusFilter.value;
+  }
+  if (activeTab.value === "completed") return "done";
+  if (activeTab.value === "running") return "running";
+  return undefined;
+}
+
+async function exportRecordsCsv() {
+  if (exportingCsv.value) return;
+  exportingCsv.value = true;
+  error.value = "";
+  try {
+    const blob = await downloadRecordsCsv({
+      limit: 200,
+      starred: activeTab.value === "starred" ? true : undefined,
+      status: csvExportStatus(),
+    });
+    const url = window.URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    const date = new Date().toISOString().slice(0, 10);
+    anchor.href = url;
+    anchor.download = `dance_assist_records_${date}.csv`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    window.URL.revokeObjectURL(url);
+  } catch (err: any) {
+    error.value = friendlyError(err, "CSV 导出失败");
+  } finally {
+    exportingCsv.value = false;
+  }
 }
 
 async function loadProjects() {
@@ -559,6 +635,7 @@ async function hydrateSelectionFromRoute() {
 async function openRecord(pipelineId: string) {
   selectedRecordId.value = pipelineId;
   selectedIssueId.value = "";
+  noteDraft.value = records.value.find((item) => item.pipeline_id === pipelineId)?.user_note || "";
   detailLoading.value = true;
   detailError.value = "";
   clearAiCoach();
@@ -573,10 +650,69 @@ async function openRecord(pipelineId: string) {
   }
 }
 
+function applyRecordFlags(pipelineId: string, flags: { starred?: boolean; note?: string; updated_at?: string | null }) {
+  records.value = records.value.map((item) => (
+    item.pipeline_id === pipelineId
+      ? {
+          ...item,
+          starred: Boolean(flags.starred),
+          user_note: flags.note || "",
+          flag_updated_at: flags.updated_at || item.flag_updated_at || null,
+        }
+      : item
+  ));
+}
+
+async function toggleRecordStar(item: RecordItem) {
+  if (!item?.pipeline_id || flagSavingId.value) return;
+  flagSavingId.value = item.pipeline_id;
+  error.value = "";
+  detailError.value = "";
+  try {
+    const next = await updateRecordFlags(item.pipeline_id, {
+      starred: !item.starred,
+      note: item.user_note || "",
+    });
+    applyRecordFlags(item.pipeline_id, next);
+    if (selectedRecordId.value === item.pipeline_id) {
+      noteDraft.value = next.note || "";
+    }
+  } catch (err: any) {
+    const message = friendlyError(err, "重点标记保存失败");
+    error.value = message;
+    if (selectedRecordId.value === item.pipeline_id) detailError.value = message;
+  } finally {
+    flagSavingId.value = "";
+  }
+}
+
+async function saveRecordNote(pipelineId: string) {
+  if (!pipelineId || flagSavingId.value) return;
+  const item = records.value.find((record) => record.pipeline_id === pipelineId);
+  flagSavingId.value = pipelineId;
+  error.value = "";
+  detailError.value = "";
+  try {
+    const next = await updateRecordFlags(pipelineId, {
+      starred: Boolean(item?.starred),
+      note: noteDraft.value,
+    });
+    applyRecordFlags(pipelineId, next);
+    noteDraft.value = next.note || "";
+  } catch (err: any) {
+    const message = friendlyError(err, "复盘备注保存失败");
+    error.value = message;
+    detailError.value = message;
+  } finally {
+    flagSavingId.value = "";
+  }
+}
+
 function closeRecordDetail() {
   selectedRecordId.value = "";
   detail.value = null;
   detailError.value = "";
+  noteDraft.value = "";
   clearAiCoach();
 }
 
@@ -767,7 +903,7 @@ function recordLead(item: Partial<RecordItem>) {
     return item.message || `${stageText(item.stage, item.status)}，这条记录仍在处理中。`;
   }
   if (item.status === "failed") {
-    return item.message || "本条分析未成功完成，请先查看异常信息或尝试重新处理。";
+    return item.error_message || item.message || "本条分析未成功完成，请先查看异常信息或尝试重新处理。";
   }
   return (
     item.overall_advice ||
@@ -793,6 +929,21 @@ function statusTone(status?: string | null) {
   if (status === "canceled") return "neutral";
   if (status === "pending" || status === "running") return "warn";
   return "neutral";
+}
+
+function errorTypeText(value?: string | null) {
+  const map: Record<string, string> = {
+    video_missing: "视频文件不存在",
+    video_unreadable: "视频无法读取",
+    ffmpeg_missing: "缺少 ffmpeg",
+    pose_cache_missing: "姿态缓存缺失",
+    model_missing: "模型缺失",
+    low_quality_input: "输入质量不足",
+    pipeline_internal_error: "内部异常",
+    canceled: "用户取消",
+    timeout: "任务超时",
+  };
+  return value ? map[value] || value : "未知原因";
 }
 
 function stageText(stage?: string | null, status?: string | null) {
@@ -1000,7 +1151,7 @@ onMounted(async () => {
 
 .record-row-wrap {
   display: grid;
-  grid-template-columns: 36px minmax(0, 1fr);
+  grid-template-columns: 36px 42px minmax(0, 1fr);
   gap: 10px;
   align-items: stretch;
 }
@@ -1023,6 +1174,26 @@ onMounted(async () => {
 .row-check.disabled {
   cursor: not-allowed;
   opacity: 0.48;
+}
+
+.record-star-button {
+  display: grid;
+  place-items: center;
+  min-height: 100%;
+  border-radius: 14px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: rgba(255, 255, 255, 0.76);
+  color: rgba(100, 116, 139, 0.92);
+  box-shadow: none;
+  font-size: 1.08rem;
+  letter-spacing: 0;
+  padding: 0;
+}
+
+.record-star-button.active {
+  border-color: rgba(226, 109, 61, 0.28);
+  background: rgba(255, 247, 237, 0.9);
+  color: #d46b2c;
 }
 
 .dense-row {
@@ -1181,7 +1352,7 @@ onMounted(async () => {
   }
 
   .record-row-wrap {
-    grid-template-columns: 32px minmax(0, 1fr);
+    grid-template-columns: 32px 38px minmax(0, 1fr);
   }
 
   .bulk-action-bar {

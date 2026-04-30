@@ -76,6 +76,9 @@ class PipelineRunResponse(BaseModel):
     attempt_count: int | None = None
     retry_count: int | None = None
     error_type: str | None = None
+    error_message: str | None = None
+    error_suggestion: str | None = None
+    raw_error: str | None = None
     stage: str | None = None
     progress: float | None = None
     cancel_requested: bool = False
@@ -97,6 +100,9 @@ class PipelineStatusResponse(BaseModel):
     attempt_count: int | None = None
     retry_count: int | None = None
     error_type: str | None = None
+    error_message: str | None = None
+    error_suggestion: str | None = None
+    raw_error: str | None = None
     stage: str | None = None
     progress: float | None = None
     cancel_requested: bool = False
@@ -124,6 +130,9 @@ class PipelineResultResponse(BaseModel):
     attempt_count: int | None = None
     retry_count: int | None = None
     error_type: str | None = None
+    error_message: str | None = None
+    error_suggestion: str | None = None
+    raw_error: str | None = None
     stage: str | None = None
     progress: float | None = None
     cancel_requested: bool = False
@@ -149,6 +158,9 @@ class PipelineResultSummaryResponse(BaseModel):
     attempt_count: int | None = None
     retry_count: int | None = None
     error_type: str | None = None
+    error_message: str | None = None
+    error_suggestion: str | None = None
+    raw_error: str | None = None
     stage: str | None = None
     progress: float | None = None
     cancel_requested: bool = False
@@ -200,6 +212,9 @@ class PipelineTaskItem(BaseModel):
     attempt_count: int | None = None
     retry_count: int | None = None
     error_type: str | None = None
+    error_message: str | None = None
+    error_suggestion: str | None = None
+    raw_error: str | None = None
     queued_at: str | None = None
     started_at: str | None = None
     finished_at: str | None = None
@@ -273,6 +288,9 @@ class RecordWorkspaceItem(PipelineTaskItem):
     files: dict | None = None
     has_report: bool = False
     issue_count: int = 0
+    starred: bool = False
+    user_note: str | None = None
+    flag_updated_at: str | None = None
 
 
 class RecordWorkspaceIssueItem(BaseModel):
@@ -298,6 +316,18 @@ class RecordWorkspaceResponse(BaseModel):
     total: int
     issue_total: int
     limit: int
+
+
+class RecordFlagsPatchRequest(BaseModel):
+    starred: bool | None = None
+    note: str | None = None
+
+
+class RecordFlagsResponse(BaseModel):
+    pipeline_id: str
+    starred: bool = False
+    note: str = ""
+    updated_at: str | None = None
 
 
 class PracticeProjectItem(BaseModel):

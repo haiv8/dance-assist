@@ -9,7 +9,8 @@
     </div>
 
     <div v-if="points.length < 2" class="trend-empty">
-      至少需要两次分析才能观察趋势。
+      <strong>至少需要两次分析才能观察趋势。</strong>
+      <span>用同一段教师示范再完成一次练习分析后，这里会显示分数和问题片段变化。</span>
     </div>
 
     <template v-else>
@@ -255,11 +256,17 @@ function deltaNote(value: number, confidence = false) {
 }
 
 .trend-empty {
+  display: grid;
+  gap: 4px;
   padding: 16px;
   border-radius: 14px;
   border: 1px dashed rgba(15, 23, 42, 0.16);
   color: var(--muted);
   background: rgba(248, 250, 252, 0.82);
+}
+
+.trend-empty strong {
+  color: var(--text);
 }
 
 .trend-summary-grid {

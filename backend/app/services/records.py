@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from app.services.pipeline import get_analysis_report, list_analysis_reports, list_pipeline_tasks
 from app.services.issue_index import load_or_build_issue_index
+from app.services.record_flags import flag_for_record, load_record_flags
 
 
 def _latest_time(item: dict) -> str:
@@ -10,6 +11,7 @@ def _latest_time(item: dict) -> str:
 
 def list_records_workspace(limit: int = 50) -> dict:
     safe_limit = max(1, min(200, int(limit)))
+    flags = load_record_flags()
 
     task_items = list_pipeline_tasks(limit=safe_limit).get("items", [])
     report_items = list_analysis_reports(limit=safe_limit).get("items", [])
@@ -22,6 +24,7 @@ def list_records_workspace(limit: int = 50) -> dict:
     for pipeline_id in pipeline_ids:
         task = task_map.get(pipeline_id) or {}
         report = report_map.get(pipeline_id) or {}
+        flag = flag_for_record(pipeline_id, flags)
         merged_items.append(
             {
                 "pipeline_id": pipeline_id,
@@ -36,6 +39,9 @@ def list_records_workspace(limit: int = 50) -> dict:
                 "attempt_count": task.get("attempt_count"),
                 "retry_count": task.get("retry_count"),
                 "error_type": task.get("error_type"),
+                "error_message": task.get("error_message"),
+                "error_suggestion": task.get("error_suggestion"),
+                "raw_error": task.get("raw_error"),
                 "queued_at": task.get("queued_at") or report.get("queued_at"),
                 "started_at": task.get("started_at") or report.get("started_at"),
                 "finished_at": task.get("finished_at") or report.get("finished_at"),
@@ -57,6 +63,9 @@ def list_records_workspace(limit: int = 50) -> dict:
                 "files": report.get("files"),
                 "has_report": bool(report),
                 "issue_count": 0,
+                "starred": flag["starred"],
+                "user_note": flag["user_note"],
+                "flag_updated_at": flag["flag_updated_at"],
             }
         )
 
