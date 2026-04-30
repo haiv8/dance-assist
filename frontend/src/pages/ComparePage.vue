@@ -277,6 +277,8 @@
         </div>
       </div>
 
+      <ConfidenceBanner v-if="result" :confidence-score="resultConfidenceScore" />
+
       <template v-if="!result">
         <div class="feedback-state" :data-tone="analyzing || pipelineStatus === 'pending' || pipelineStatus === 'running' ? 'loading' : 'empty'">
           <strong class="feedback-state-title">{{ analyzing || pipelineStatus === 'pending' || pipelineStatus === 'running' ? '分析任务正在执行' : '暂时还没有分析结果' }}</strong>
@@ -417,6 +419,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import { getAiCoachReport } from "../api/ai";
 import { absMediaUrl } from "../api/http";
+import ConfidenceBanner from "../components/records/ConfidenceBanner.vue";
 import {
   cancelPipeline,
   getPipelineFrameDetail,
@@ -647,6 +650,7 @@ const confidenceData = computed<Record<string, any> | null>(() => {
   const confidence = result.value?.report?.confidence;
   return confidence && typeof confidence === "object" ? confidence : null;
 });
+const resultConfidenceScore = computed(() => confidenceData.value?.score ?? result.value?.report?.confidence_score ?? null);
 const confidenceLevelText = computed(() => {
   const level = String(confidenceData.value?.level ?? "");
   if (level === "high") return "高";

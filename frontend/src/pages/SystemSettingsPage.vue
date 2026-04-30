@@ -122,6 +122,7 @@
               <span class="tag" :class="item.tone">{{ item.statusText }}</span>
             </div>
             <span class="helper-text">{{ item.detail }}</span>
+            <span v-if="item.suggestion" class="helper-text settings-check-suggestion">{{ item.suggestion }}</span>
           </div>
         </div>
       </article>
@@ -279,6 +280,7 @@ type CheckItem = {
   statusText: string;
   tone: string;
   detail: string;
+  suggestion: string;
 };
 
 type InsightItem = {
@@ -335,11 +337,16 @@ const pairCountText = computed(() => {
 const checkItems = computed<CheckItem[]>(() => {
   const checks = status.value?.checks || {};
   const items: CheckItem[] = [
-    makeCheckItem("app_home", "运行目录", checks.app_home),
+    makeCheckItem("backend_service", "后端服务", checks.backend_service),
+    makeCheckItem("model_file", "MediaPipe 模型", checks.model_file),
+    makeCheckItem("ffmpeg", "ffmpeg / ffprobe", checks.ffmpeg),
+    makeCheckItem("outputs_writable", "outputs 目录", checks.outputs_writable),
+    makeCheckItem("runtime_writable", "运行目录", checks.runtime_writable || checks.app_home),
     makeCheckItem("disk", "磁盘空间", checks.disk),
-    makeCheckItem("model_file", "模型文件", checks.model_file),
-    makeCheckItem("postgresql", "PostgreSQL", checks.postgresql),
     makeCheckItem("redis", "Redis", checks.redis),
+    makeCheckItem("postgresql", "PostgreSQL", checks.postgresql),
+    makeCheckItem("ai_provider", "AI provider", checks.ai_provider),
+    makeCheckItem("recent_pipeline", "最近任务", checks.recent_pipeline),
   ];
 
   if (checks.redis?.required !== undefined) {
@@ -357,6 +364,7 @@ const checkItems = computed<CheckItem[]>(() => {
           ? "当前执行器需要 Redis Worker 在线，但最近没有收到有效心跳。"
           : "Redis Worker 心跳正常。"
         : "当前执行器不依赖 Redis Worker。",
+      suggestion: checks.redis?.suggestion || "",
     });
   }
 
@@ -550,19 +558,24 @@ function makeCheckItem(key: string, label: string, value: any): CheckItem {
   const statusTextMap: Record<string, string> = {
     pass: "正常",
     fail: "异常",
+    warn: "需关注",
+    optional: "可选",
     disabled: "未启用",
   };
   const toneMap: Record<string, string> = {
     pass: "ok",
     fail: "danger",
+    warn: "warn",
+    optional: "neutral",
     disabled: "neutral",
   };
   return {
     key,
-    label,
+    label: value?.title || label,
     statusText: statusTextMap[rawStatus] || rawStatus,
     tone: toneMap[rawStatus] || "neutral",
-    detail: value?.detail || value?.path || "--",
+    detail: value?.message || value?.detail || value?.path || "--",
+    suggestion: value?.suggestion || "",
   };
 }
 
@@ -869,6 +882,11 @@ onMounted(() => {
 .settings-maintenance-card .helper-text {
   line-height: 1.6;
   word-break: break-all;
+}
+
+.settings-check-suggestion {
+  color: var(--text);
+  font-weight: 650;
 }
 
 .settings-inline-field {

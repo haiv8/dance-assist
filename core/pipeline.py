@@ -30,6 +30,7 @@ from core.io_utils import dump_json, ensure_dir, make_result_id, utc_ts
 from core.scoring import build_confidence_summary as _build_confidence_summary
 from core.scoring import build_score_explanation as _build_score_explanation
 from core.scoring import score_alignment as _score
+from core.timing import StageTimer
 from core.types import AlignInfo, PipelineResult, QualityInfo, ScoreBreakdown
 
 
@@ -1154,6 +1155,7 @@ def run(
     result_id: str | None = None,
     pair_name: str | None = None,
 ) -> PipelineResult:
+    timer = StageTimer()
     cfg = PipelineConfig.from_obj(config)
 
     data_dir = root / "data"
@@ -1180,14 +1182,17 @@ def run(
     for p in [t_world, u_world, t_norm, u_norm, t_meta, u_meta]:
         if not p.exists():
             raise FileNotFoundError(f"Missing cache file: {p}")
+    timer.checkpoint("input_prepare")
 
     t_xyz_raw, t_vis = _load_arr(t_world)
     u_xyz_raw, u_vis = _load_arr(u_world)
     t_norm_raw = np.load(t_norm)
     u_norm_raw = np.load(u_norm)
+    timer.checkpoint("pose_loading_or_extraction")
 
     t_xyz, tq = _quality_and_fill(t_xyz_raw, t_vis, cfg)
     u_xyz, uq = _quality_and_fill(u_xyz_raw, u_vis, cfg)
+    timer.checkpoint("quality_processing")
 
     t_body = _normalize_body(t_xyz)
     u_body = _normalize_body(u_xyz)
@@ -1203,6 +1208,7 @@ def run(
 
     ts, te = _trim_range(_motion_energy(t_body), t_fps, cfg)
     us, ue = _trim_range(_motion_energy(u_body), u_fps, cfg)
+    timer.checkpoint("feature_building")
 
     t_f2 = t_f[ts:te]
     u_f2 = u_f[us:ue]
@@ -1372,6 +1378,7 @@ def run(
             teacher_to_user = np.zeros(Tt, dtype=np.int32)
         teacher_to_user = np.clip(teacher_to_user, 0, max(0, Tu - 1))
         map_user_sec = (teacher_to_user.astype(np.float32) / max(1e-6, u_fps)).astype(np.float32)
+    timer.checkpoint("alignment_dtw")
 
     audio_alignment = _estimate_audio_offset_sec(teacher_video_path, user_video_path, cfg)
     if audio_alignment["reliable"]:
@@ -1403,6 +1410,7 @@ def run(
         cfg=cfg,
     )
     matched_user_sec = (matched_user_frame.astype(np.float32) / max(1e-6, u_fps)).astype(np.float32)
+    timer.checkpoint("audio_sync")
 
     # alignment-path error kept for diagnostics/confidence only
     diff_feat = np.linalg.norm(t_f[i_path] - u_f_used[j_path], axis=1) / np.sqrt(t_f.shape[1])
@@ -1458,6 +1466,7 @@ def run(
         frame_quality=np.minimum(tq.frame_quality, per_frame_match_quality) * matched_teacher_mask.astype(np.float32),
         cfg=cfg,
     )
+    timer.checkpoint("tempo_analysis")
 
     valid_pose = (tq.frame_quality >= cfg.invalid_frame_quality_thr) & matched_teacher_mask
     m_pose = _peak_pick(err_curve, cfg.marker_topk_pose, int(max(1, round(cfg.marker_min_gap_sec * t_fps))), valid_mask=valid_pose)
@@ -1519,6 +1528,7 @@ def run(
         )
     partial_alignment["matched_segment_score"] = segment_score_total
     partial_alignment["score_coverage_weight"] = float(cfg.partial_dtw_score_coverage_weight if partial_alignment["applied"] else 0.0)
+    timer.checkpoint("scoring")
 
     # per-frame explain rows
     frame_analysis = []
@@ -1737,6 +1747,8 @@ def run(
         "timing_offset_sec_abs_mean": float(np.mean(np.abs(timing_offset_sec))) if len(timing_offset_sec) else 0.0,
     }
 
+    timer.checkpoint("report_building")
+    report["performance"] = timer.snapshot()
     dump_json(out_dir / "report.json", report)
 
     timeline_npz = out_dir / "timeline.npz"
@@ -1800,6 +1812,7 @@ def run(
         "audio_offset_sec": float(audio_alignment.get("offset_sec", 0.0) or 0.0),
         "mean_abs_timing_offset_sec": float(np.mean(np.abs(timing_offset_sec))) if len(timing_offset_sec) else 0.0,
     }
+    summary["performance"] = report["performance"]
     dump_json(out_dir / "summary.json", summary)
 
     calibration = {
@@ -1817,6 +1830,13 @@ def run(
     if cfg.save_debug_plots:
         dbg = _save_debug(out_dir, i_path, j_path, err_curve, markers, tempo_rel, tempo_segments, tq.frame_quality)
         dump_json(out_dir / "debug_index.json", dbg)
+
+    timer.checkpoint("output_writing")
+    performance = timer.snapshot()
+    report["performance"] = performance
+    summary["performance"] = performance
+    dump_json(out_dir / "report.json", report)
+    dump_json(out_dir / "summary.json", summary)
 
     return PipelineResult(
         result_id=rid,

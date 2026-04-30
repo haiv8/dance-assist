@@ -155,3 +155,21 @@ python scripts/verify-ai-fallback.py
 - 长期：补充训练档案、进步趋势、更多舞种样例和人工评分对照。
 
 更详细的演示说明见 `docs/demo-guide.md`，后续开发路线见 `docs/roadmap.md`。
+
+## Thesis experiment samples
+
+`scripts/make-thesis-samples.py` generates controlled user-video variants for final thesis experiments without changing the core algorithm. It uses ffmpeg to create `thesis_exp_*` files and writes `.runtime/thesis_samples/manifest.json`.
+
+Example:
+
+```powershell
+python scripts/make-thesis-samples.py --teacher-video-id c4af3a9152d0 --user-video-id 980ac21272a6 --overwrite
+```
+
+The script also accepts direct paths:
+
+```powershell
+python scripts/make-thesis-samples.py --teacher-path path\to\teacher.mp4 --user-path path\to\user.mp4 --output-dir .runtime\thesis_samples
+```
+
+Generated samples include original copy, 0.8x slow, 1.2x fast, 2s start-offset trim, low-quality 480p, and optional blur with `--include-blur`.

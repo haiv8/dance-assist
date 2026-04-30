@@ -33,6 +33,8 @@
     </div>
 
     <div v-else-if="detail" class="detail-stack">
+      <ConfidenceBanner :confidence-score="detail.report?.confidence?.score ?? detail.confidence_score" />
+
       <div class="metric-row compact-stats">
         <div class="metric-chip"><strong>状态</strong><span>{{ statusText(detail.status) }}</span></div>
         <div class="metric-chip"><strong>阶段</strong><span>{{ stageText(detail.stage, detail.status) }}</span></div>
@@ -58,6 +60,12 @@
         :ai-coach-error="aiCoachError"
         :source-text="aiCoachSourceText"
         :fallback-hint="aiCoachFallbackHint"
+      />
+
+      <PriorityReviewList
+        :issues="issues"
+        :confidence-score="detail.report?.confidence?.score ?? detail.confidence_score"
+        @jump-issue="$emit('jumpIssue', $event)"
       />
 
       <div class="detail-columns">
@@ -120,6 +128,8 @@ import { absMediaUrl } from "../../api/http";
 import { normalizedConfidenceSummary } from "../../utils/confidence";
 import { confidenceLevelText } from "../../composables/useScoreExplanation";
 import AiCoachCard from "./AiCoachCard.vue";
+import ConfidenceBanner from "./ConfidenceBanner.vue";
+import PriorityReviewList from "./PriorityReviewList.vue";
 import ScoreExplanationCard from "./ScoreExplanationCard.vue";
 import type {
   AiCoachResponse,
