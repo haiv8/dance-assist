@@ -2,14 +2,10 @@ from __future__ import annotations
 
 import csv
 import io
-import json
 from typing import Any
 
-from app.services.issue_index import load_issue_index
-from app.services.pipeline_views import task_summary
-from app.services.record_flags import flag_for_record, load_record_flags
+from app.services.records import list_records_workspace
 from app.services.task_store_reports import load_output_summary
-from app.settings import settings
 
 
 CSV_FIELDS = [
@@ -68,32 +64,6 @@ def _starred_matches(item: dict[str, Any], starred: bool | None) -> bool:
     return bool(item.get("starred")) is starred
 
 
-def _latest_time(item: dict[str, Any]) -> str:
-    return str(item.get("updated_at") or item.get("finished_at") or item.get("started_at") or item.get("queued_at") or "")
-
-
-def _load_task_items_from_disk(limit: int, status: str | None) -> list[dict[str, Any]]:
-    tasks_dir = settings.APP_HOME / "tasks"
-    if not tasks_dir.exists():
-        return []
-
-    items: list[dict[str, Any]] = []
-    for path in tasks_dir.glob("*.json"):
-        try:
-            raw = json.loads(path.read_text(encoding="utf-8"))
-        except Exception:
-            continue
-        if not isinstance(raw, dict):
-            continue
-        item = task_summary(raw)
-        if status and item.get("status") != status:
-            continue
-        items.append(item)
-
-    items.sort(key=_latest_time, reverse=True)
-    return items[:limit]
-
-
 def _performance_total_sec(item: dict[str, Any], summary: dict[str, Any]) -> str:
     status = item.get("status")
     if str(status or "") != "done":
@@ -107,27 +77,29 @@ def _performance_total_sec(item: dict[str, Any], summary: dict[str, Any]) -> str
 def build_records_csv(*, limit: int = 200, starred: bool | None = None, status: str | None = None) -> str:
     safe_limit = max(1, min(500, int(limit)))
     task_status = status if status in {"done", "failed", "running"} else None
-    items = _load_task_items_from_disk(safe_limit, task_status)
-    flags = load_record_flags()
+    workspace = list_records_workspace(limit=safe_limit)
+    items = [item for item in workspace.get("items", []) if isinstance(item, dict)]
+    workspace_issues = [issue for issue in workspace.get("issues", []) if isinstance(issue, dict)]
+
+    high_issue_count_by_pipeline: dict[str, int] = {}
+    for issue in workspace_issues:
+        if str(issue.get("severity") or "").lower() != "high":
+            continue
+        pipeline_id = str(issue.get("pipeline_id") or "")
+        if pipeline_id:
+            high_issue_count_by_pipeline[pipeline_id] = high_issue_count_by_pipeline.get(pipeline_id, 0) + 1
 
     rows: list[dict[str, str]] = []
     for item in items:
         if not isinstance(item, dict):
             continue
         pipeline_id = str(item.get("pipeline_id") or "")
-        flag = flag_for_record(pipeline_id, flags)
         if not _status_matches(item.get("status"), task_status):
             continue
-        if not _starred_matches(flag, starred):
+        if not _starred_matches(item, starred):
             continue
 
         summary = load_output_summary(str(item.get("pair_name") or "").strip())
-        issues = load_issue_index(item) or []
-        high_issue_count = sum(
-            1
-            for issue in issues
-            if isinstance(issue, dict) and str(issue.get("severity") or "").lower() == "high"
-        )
         rows.append(
             {
                 "pipeline_id": pipeline_id,
@@ -139,9 +111,9 @@ def build_records_csv(*, limit: int = 200, starred: bool | None = None, status: 
                 "score_pose": _safe_number(summary.get("score_pose")),
                 "score_tempo": _safe_number(summary.get("score_tempo")),
                 "confidence_score": _safe_number(_first_present(item.get("confidence_score"), summary.get("confidence_score"))),
-                "confidence_level": _safe_text(summary.get("confidence_level")),
-                "issue_count": _safe_number(len(issues)),
-                "high_issue_count": _safe_number(high_issue_count),
+                "confidence_level": _safe_text(item.get("confidence_level") or summary.get("confidence_level")),
+                "issue_count": _safe_number(item.get("issue_count")),
+                "high_issue_count": _safe_number(high_issue_count_by_pipeline.get(pipeline_id, 0)),
                 "total_sec": _performance_total_sec(item, summary) if pipeline_id else "",
                 "finished_at": _safe_text(item.get("finished_at")),
                 "created_at_or_queued_at": _safe_text(item.get("created_at") or item.get("queued_at")),

@@ -17,6 +17,7 @@ from fastapi import HTTPException
 from app.services.error_mapping import build_failure_payload, input_quality_failure, map_pipeline_exception
 from app.services.issue_index import delete_issue_index, save_issue_index
 from app.services.pipeline_executor import get_pipeline_executor_backend, submit_pipeline_job
+from app.services.record_flags import delete_record_flags
 from app.services.storage import get_video_meta
 from app.services.video_quality import check_video_pair_quality
 from app.services.task_store import (
@@ -755,6 +756,10 @@ def remove_pipeline_task(pipeline_id: str) -> dict[str, Any]:
 
     record_deleted = delete_pipeline_record(pipeline_id)
     delete_issue_index(task)
+    try:
+        delete_record_flags(pipeline_id)
+    except Exception:
+        pass
     file_deleted = _drop_task_file(pipeline_id)
     with _TASK_LOCK:
         removed = _TASKS.pop(pipeline_id, None)

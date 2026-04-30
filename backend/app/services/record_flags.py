@@ -87,6 +87,20 @@ def update_record_flags(pipeline_id: str, *, starred: bool | None = None, note: 
     }
 
 
+def delete_record_flags(pipeline_id: str) -> bool:
+    safe_id = str(pipeline_id or "").strip()
+    if not safe_id:
+        return False
+
+    with _FLAGS_LOCK:
+        flags = _load_record_flags_unlocked()
+        if safe_id not in flags:
+            return False
+        flags.pop(safe_id, None)
+        _save_record_flags(flags)
+        return True
+
+
 def flag_for_record(pipeline_id: str, flags: dict[str, dict[str, Any]] | None = None) -> dict[str, Any]:
     safe_id = str(pipeline_id or "").strip()
     item = (flags or {}).get(safe_id) or {}
