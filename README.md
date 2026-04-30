@@ -148,6 +148,8 @@ python scripts/verify-ai-fallback.py
 - `verify-records-workspace.py`：验证记录中心聚合、问题片段归属和排序。
 - `verify-ai-fallback.py`：验证无 API Key 时本地 AI 助教 fallback。
 
+终期答辩前可按 `docs/final-acceptance-checklist.md` 做完整验收。
+
 ## 后续计划简述
 
 - 短期：完善评分解释、补充测试样例、增加阶段级日志。
