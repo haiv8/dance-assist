@@ -8,7 +8,7 @@ from typing import Any
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
-def _latest_performance_report() -> dict[str, Any] | None:
+def _latest_performance_report() -> tuple[dict[str, Any], Path] | None:
     candidates: list[Path] = []
     for root in [PROJECT_ROOT / "outputs", PROJECT_ROOT / ".runtime" / "outputs"]:
         if root.exists():
@@ -22,7 +22,7 @@ def _latest_performance_report() -> dict[str, Any] | None:
         except Exception:
             continue
         if isinstance(payload, dict) and isinstance(payload.get("performance"), dict):
-            return payload
+            return payload, path
     return None
 
 
@@ -69,7 +69,13 @@ def verify_performance(report: dict[str, Any]) -> None:
 
 
 def main() -> None:
-    report = _latest_performance_report() or _sample_report()
+    found = _latest_performance_report()
+    if found:
+        report, path = found
+        print(f"using report: {path}")
+    else:
+        report = _sample_report()
+        print("using built-in sample report")
     verify_performance(report)
     print("performance verification passed")
 

@@ -30,6 +30,10 @@ python scripts/verify-scoring-explanation.py
 python scripts/verify-records-workspace.py
 python scripts/verify-ai-fallback.py
 python scripts/verify-performance-report.py
+python scripts/verify-record-flags.py
+python scripts/verify-records-csv-export.py
+python scripts/verify-error-mapping.py
+python scripts/verify-export-analysis-report-md.py
 ```
 
 ## 3. 前端验证命令
