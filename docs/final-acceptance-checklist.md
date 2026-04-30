@@ -34,6 +34,7 @@ python scripts/verify-record-flags.py
 python scripts/verify-records-csv-export.py
 python scripts/verify-error-mapping.py
 python scripts/verify-export-analysis-report-md.py
+python scripts/verify-input-quality-report.py
 ```
 
 ## 3. 前端验证命令
