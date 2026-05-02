@@ -323,13 +323,13 @@ def _analysis(rows: list[dict[str, str]]) -> str:
 
 
 def _write_markdown(path: Path, rows: list[dict[str, str]]) -> None:
-    issue_type_counter: Counter[str] = Counter()
+    issue_count_by_sample_type: Counter[str] = Counter()
     severity_totals = Counter()
     for row in rows:
         severity_totals["issues"] += int(row.get("issue_count") or 0)
         severity_totals["high"] += int(row.get("high_issue_count") or 0)
         sample_type = row.get("sample_type") or "unknown"
-        issue_type_counter[sample_type] += int(row.get("issue_count") or 0)
+        issue_count_by_sample_type[sample_type] += int(row.get("issue_count") or 0)
 
     lines = [
         "# 论文实验结果汇总",
@@ -364,8 +364,8 @@ def _write_markdown(path: Path, rows: list[dict[str, str]]) -> None:
         "## 问题片段统计表",
         "",
         *_markdown_table(
-            ["类型", "问题片段总数", "高优先级数量"],
-            [[sample_type, issue_count, sum(int(row.get("high_issue_count") or 0) for row in rows if (row.get("sample_type") or "unknown") == sample_type)] for sample_type, issue_count in sorted(issue_type_counter.items())],
+            ["样例类型", "问题片段总数", "高优先级数量"],
+            [[sample_type, issue_count, sum(int(row.get("high_issue_count") or 0) for row in rows if (row.get("sample_type") or "unknown") == sample_type)] for sample_type, issue_count in sorted(issue_count_by_sample_type.items())],
         ),
         "",
         "## 保守分析",

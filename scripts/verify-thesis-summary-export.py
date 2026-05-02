@@ -142,10 +142,14 @@ def main() -> None:
 
         missing = next(row for row in rows if row["pipeline_id"] == "pipeline_missing_fields")
         assert missing["score_total"] == "", "missing score should export as empty value"
+        low_quality = next(row for row in rows if row["pipeline_id"] == "pipeline_user_low_quality_480p")
+        assert "扰动样例" in low_quality["note"] or "可信度较低" in low_quality["note"], "low_quality note should explain perturbation or low confidence"
 
         md_text = md_path.read_text(encoding="utf-8")
         for marker in ("实验结果汇总表", "性能统计表", "问题片段统计表", "保守分析", "pipeline_user_low_quality_480p"):
             assert marker in md_text, f"Markdown should contain {marker}"
+        assert "样例类型" in md_text, "Markdown issue summary should label sample type clearly"
+        assert "| 类型 | 问题片段总数 | 高优先级数量 |" not in md_text, "Markdown should not use ambiguous issue summary header"
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)
 
