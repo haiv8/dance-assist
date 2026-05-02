@@ -132,6 +132,15 @@ def main() -> None:
             total_sec=None,
             issues=[],
         )
+        _make_result(
+            outputs_dir,
+            "pipeline_started_at_control",
+            sample_type="unknown",
+            score=75.0,
+            confidence=0.80,
+            total_sec=3.2,
+            issues=[],
+        )
 
         _write_json(
             manifest_path,
@@ -158,7 +167,7 @@ def main() -> None:
             assert marker in csv_text, f"CSV should contain {marker}"
 
         rows = list(csv.DictReader(io.StringIO(csv_text.lstrip("\ufeff"))))
-        assert len(rows) == 6, "all constructed results should be summarized"
+        assert len(rows) == 7, "all constructed results should be summarized"
         original = next(row for row in rows if row["pipeline_id"] == "pipeline_user_original")
         assert original["score_total"] == "82.5"
         assert original["sample_type"] == "original"
@@ -171,6 +180,8 @@ def main() -> None:
         missing = next(row for row in rows if row["pipeline_id"] == "pipeline_missing_fields")
         assert missing["score_total"] == "", "missing score should export as empty value"
         assert missing["sample_type"] == "unknown", "unknown sample should remain unknown"
+        started_at_control = next(row for row in rows if row["pipeline_id"] == "pipeline_started_at_control")
+        assert started_at_control["sample_type"] == "unknown", "started_at-like text should not be treated as start_offset"
         low_quality = next(row for row in rows if row["pipeline_id"] == "pipeline_user_low_quality_480p")
         assert low_quality["sample_type"] == "low_quality"
         assert "扰动样例" in low_quality["note"] or "可信度较低" in low_quality["note"], "low_quality note should explain perturbation or low confidence"

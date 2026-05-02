@@ -4,6 +4,7 @@ import argparse
 import csv
 import io
 import json
+import re
 import sys
 from collections import Counter
 from pathlib import Path
@@ -240,17 +241,34 @@ def _infer_sample_type(
     summary: dict[str, Any] | None = None,
 ) -> str:
     text = _sample_haystack(row, report, summary)
-    if "original" in text:
+    tokens = _sample_tokens(text)
+    if _has_indicator(text, tokens, "original"):
         return "original"
-    if "low_quality" in text or "480p" in text or "blur" in text or "compressed" in text:
+    if _has_indicator(text, tokens, "low_quality", "480p", "blur", "compressed"):
         return "low_quality"
-    if "slow" in text or "0_8" in text or "0.8" in text or "80pct" in text:
+    if _has_indicator(text, tokens, "slow", "0_8", "0.8", "80pct"):
         return "slow"
-    if "fast" in text or "1_2" in text or "1.2" in text or "120pct" in text:
+    if _has_indicator(text, tokens, "fast", "1_2", "1.2", "120pct"):
         return "fast"
-    if "offset" in text or "trim" in text or "delay" in text or "start" in text:
+    if _has_indicator(text, tokens, "offset", "trim", "delay", "start"):
         return "start_offset"
     return "unknown"
+
+
+def _sample_tokens(text: str) -> set[str]:
+    normalized = text.replace("_", " ")
+    return {token for token in re.split(r"[^a-z0-9.]+", normalized.lower()) if token}
+
+
+def _has_indicator(text: str, tokens: set[str], *indicators: str) -> bool:
+    normalized = f" {text.replace('-', '_').lower()} "
+    for indicator in indicators:
+        indicator = indicator.lower()
+        if "_" in indicator and indicator in normalized:
+            return True
+        if indicator in tokens:
+            return True
+    return False
 
 
 def _note(row: dict[str, str], issue_count: int, high_issue_count: int) -> str:
