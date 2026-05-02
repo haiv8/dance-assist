@@ -10,9 +10,6 @@
           <button class="secondary-button" :disabled="loading || issueLoading" @click="refreshWorkspace">
             {{ loading || issueLoading ? "刷新中..." : "刷新记录" }}
           </button>
-          <button class="secondary-button" :disabled="exportingCsv" @click="exportRecordsCsv">
-            {{ exportingCsv ? "导出中..." : "导出 CSV" }}
-          </button>
           <button @click="goToCompare">开始新分析</button>
         </div>
       </div>
@@ -34,6 +31,35 @@
           <span>问题片段</span>
           <strong>{{ issueItems.length }}</strong>
         </div>
+      </div>
+
+      <div class="export-center">
+        <div>
+          <strong>导出中心</strong>
+          <p class="helper-text">{{ exportCenterHint }}</p>
+        </div>
+        <div class="export-actions">
+          <button class="secondary-button" :disabled="exportingCsv" @click="exportRecordsCsv">
+            {{ exportingCsv ? "导出中..." : "导出记录 CSV" }}
+          </button>
+          <button class="secondary-button" :disabled="!selectedExportPipelineId || copyingId === selectedExportPipelineId" @click="copySelectedPipelineId">
+            {{ copyingId === selectedExportPipelineId ? "已复制" : "复制当前 pipeline_id" }}
+          </button>
+          <a
+            v-if="selectedReportUrl"
+            class="secondary-button link-button"
+            :href="selectedReportUrl"
+            target="_blank"
+            rel="noreferrer"
+          >
+            打开当前 report.json
+          </a>
+          <button v-else class="secondary-button" type="button" disabled>打开当前 report.json</button>
+          <button class="secondary-button" type="button" :disabled="!markdownCommand || copyingMarkdownCommand" @click="copyMarkdownCommand">
+            {{ copyingMarkdownCommand ? "已复制命令" : "复制 Markdown 导出命令" }}
+          </button>
+        </div>
+        <code v-if="markdownCommand" class="export-command">{{ markdownCommand }}</code>
       </div>
     </section>
 
@@ -290,7 +316,7 @@
               </div>
               <div class="dense-col">
                 <strong class="mono-col">{{ formatDate(item.updated_at || item.finished_at || item.started_at || item.queued_at) }}</strong>
-                <span class="helper-text">{{ item.status === "failed" ? `失败：${errorTypeText(item.error_type)}` : `执行器：${item.executor || "--"}` }}</span>
+                <span class="helper-text">{{ item.status === "failed" ? failedRecordMeta(item) : `执行器：${item.executor || "--"}` }}</span>
               </div>
             </button>
           </div>
@@ -335,6 +361,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import { absMediaUrl } from "../api/http";
 import { deletePipelineTask, getPipelineResultSummary } from "../api/pipelines";
 import { downloadRecordsCsv, getPracticeProject, getPracticeProjects, updateRecordFlags } from "../api/records";
 import EmptyState from "../components/EmptyState.vue";
@@ -392,6 +419,7 @@ const selectedProjectId = ref("");
 const projectDetail = ref<PracticeProjectDetailResponse | null>(null);
 const projectDetailLoading = ref(false);
 const exportingCsv = ref(false);
+const copyingMarkdownCommand = ref(false);
 const flagSavingId = ref("");
 const noteDraft = ref("");
 
@@ -483,6 +511,23 @@ const someVisibleSelected = computed(() =>
 
 const selectedRecord = computed(() => records.value.find((item) => item.pipeline_id === selectedRecordId.value) ?? null);
 const selectedIssue = computed(() => filteredIssues.value.find((item) => item.id === selectedIssueId.value) ?? null);
+const selectedExportRecord = computed(() => detail.value ?? selectedRecord.value);
+const selectedExportPipelineId = computed(() => selectedExportRecord.value?.pipeline_id || selectedRecordId.value || "");
+const selectedReportUrl = computed(() => {
+  const reportUrl = selectedExportRecord.value?.files?.report_url;
+  return reportUrl ? absMediaUrl(reportUrl) : "";
+});
+const markdownCommand = computed(() => {
+  const record = selectedExportRecord.value;
+  if (!record || record.status !== "done" || !selectedExportPipelineId.value) return "";
+  return `python scripts/export-analysis-report-md.py --pipeline-id ${selectedExportPipelineId.value}`;
+});
+const exportCenterHint = computed(() => {
+  const record = selectedExportRecord.value;
+  if (!record) return "可先导出当前记录列表；如需导出单条 Markdown，请先选择一条已完成记录。";
+  if (record.status !== "done") return "当前记录还未完成，Markdown 导出命令会在分析完成后可用。";
+  return "当前已选择完成记录，可复制任务 ID、打开 report.json，或复制 Markdown 导出命令。";
+});
 const canCancelSelectedRecord = computed(() => {
   const item = detail.value ?? selectedRecord.value;
   return Boolean(item && isRunningTaskStatus(item.status) && !item.cancel_requested);
@@ -786,6 +831,27 @@ async function copyPipelineId(pipelineId: string) {
   if (actionError.value) detailError.value = actionError.value;
 }
 
+async function copySelectedPipelineId() {
+  if (!selectedExportPipelineId.value) return;
+  await copyPipelineId(selectedExportPipelineId.value);
+}
+
+async function copyMarkdownCommand() {
+  if (!markdownCommand.value) return;
+  copyingMarkdownCommand.value = true;
+  detailError.value = "";
+  error.value = "";
+  try {
+    await navigator.clipboard.writeText(markdownCommand.value);
+    window.setTimeout(() => {
+      copyingMarkdownCommand.value = false;
+    }, 1000);
+  } catch (err: any) {
+    copyingMarkdownCommand.value = false;
+    error.value = friendlyError(err, "Markdown 导出命令复制失败");
+  }
+}
+
 async function loadDetailAiCoach(pipelineId: string) {
   await loadAiCoach(pipelineId);
 }
@@ -912,6 +978,11 @@ function recordLead(item: Partial<RecordItem>) {
     normalizedConfidenceSummary(null, item.confidence_summary) ||
     "本条记录已完成，可展开查看摘要、输出文件和问题片段。"
   );
+}
+
+function failedRecordMeta(item: Partial<RecordItem>) {
+  const message = item.error_message || item.message || errorTypeText(item.error_type);
+  return `失败：${message || "请查看详情"}`;
 }
 
 function statusText(status?: string | null) {
@@ -1045,6 +1116,44 @@ onMounted(async () => {
 .records-kpi-card.emphasis {
   background: linear-gradient(180deg, rgba(255, 247, 241, 0.98) 0%, rgba(255, 243, 235, 0.94) 100%);
   border-color: rgba(226, 109, 61, 0.18);
+}
+
+.export-center {
+  display: grid;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background:
+    radial-gradient(circle at top right, rgba(15, 143, 179, 0.1), transparent 28%),
+    rgba(255, 255, 255, 0.82);
+}
+
+.export-center > div:first-child {
+  display: grid;
+  gap: 4px;
+}
+
+.export-center strong {
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+}
+
+.export-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.export-command {
+  display: block;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: rgba(15, 23, 42, 0.05);
+  color: var(--text);
+  overflow-x: auto;
+  white-space: nowrap;
 }
 
 .records-toolbar {

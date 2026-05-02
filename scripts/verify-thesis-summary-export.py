@@ -98,6 +98,33 @@ def main() -> None:
         )
         _make_result(
             outputs_dir,
+            "pipeline_user_slow_0_8x",
+            sample_type="slow",
+            score=78.0,
+            confidence=0.72,
+            total_sec=7.1,
+            issues=[{"sec": 1.4, "severity": "medium", "type": "tempo", "summary": "节奏略慢"}],
+        )
+        _make_result(
+            outputs_dir,
+            "pipeline_user_fast_1_2x",
+            sample_type="fast",
+            score=79.0,
+            confidence=0.74,
+            total_sec=4.9,
+            issues=[{"sec": 1.8, "severity": "medium", "type": "tempo", "summary": "节奏略快"}],
+        )
+        _make_result(
+            outputs_dir,
+            "pipeline_user_offset_trim_2s",
+            sample_type="offset",
+            score=76.0,
+            confidence=0.70,
+            total_sec=5.8,
+            issues=[{"sec": 2.2, "severity": "high", "type": "pose", "summary": "起始片段未对齐"}],
+        )
+        _make_result(
+            outputs_dir,
             "pipeline_missing_fields",
             sample_type="unknown",
             score=None,
@@ -131,9 +158,10 @@ def main() -> None:
             assert marker in csv_text, f"CSV should contain {marker}"
 
         rows = list(csv.DictReader(io.StringIO(csv_text.lstrip("\ufeff"))))
-        assert len(rows) == 3, "all constructed results should be summarized"
+        assert len(rows) == 6, "all constructed results should be summarized"
         original = next(row for row in rows if row["pipeline_id"] == "pipeline_user_original")
         assert original["score_total"] == "82.5"
+        assert original["sample_type"] == "original"
         assert original["confidence_score"] == "0.86"
         assert original["issue_count"] == "2"
         assert original["high_issue_count"] == "1"
@@ -142,8 +170,13 @@ def main() -> None:
 
         missing = next(row for row in rows if row["pipeline_id"] == "pipeline_missing_fields")
         assert missing["score_total"] == "", "missing score should export as empty value"
+        assert missing["sample_type"] == "unknown", "unknown sample should remain unknown"
         low_quality = next(row for row in rows if row["pipeline_id"] == "pipeline_user_low_quality_480p")
+        assert low_quality["sample_type"] == "low_quality"
         assert "扰动样例" in low_quality["note"] or "可信度较低" in low_quality["note"], "low_quality note should explain perturbation or low confidence"
+        assert next(row for row in rows if row["pipeline_id"] == "pipeline_user_slow_0_8x")["sample_type"] == "slow"
+        assert next(row for row in rows if row["pipeline_id"] == "pipeline_user_fast_1_2x")["sample_type"] == "fast"
+        assert next(row for row in rows if row["pipeline_id"] == "pipeline_user_offset_trim_2s")["sample_type"] == "start_offset"
 
         md_text = md_path.read_text(encoding="utf-8")
         for marker in ("实验结果汇总表", "性能统计表", "问题片段统计表", "保守分析", "pipeline_user_low_quality_480p"):

@@ -185,36 +185,71 @@ def _load_manifest(path: str | None) -> list[dict[str, Any]]:
     return [item for item in samples if isinstance(item, dict)] if isinstance(samples, list) else []
 
 
-def _infer_from_manifest(row: dict[str, str], samples: list[dict[str, Any]]) -> tuple[str, str]:
-    haystack = " ".join(
+def _sample_haystack(row: dict[str, str], report: dict[str, Any] | None = None, summary: dict[str, Any] | None = None) -> str:
+    parts: list[str] = [
         str(row.get(key) or "")
-        for key in ("pipeline_id", "pair_name", "teacher_video_id", "user_video_id")
-    ).lower()
+        for key in ("pipeline_id", "pair_name", "teacher_video_id", "user_video_id", "note")
+    ]
+    for payload in (summary or {}, report or {}):
+        if not isinstance(payload, dict):
+            continue
+        for key in (
+            "teacher_filename",
+            "user_filename",
+            "teacher_video",
+            "user_video",
+            "filename",
+            "file_name",
+            "source_path",
+            "video_path",
+        ):
+            parts.append(str(payload.get(key) or ""))
+        input_quality = _as_dict(payload.get("input_quality"))
+        parts.append(str(input_quality.get("summary") or ""))
+        for meta_key in ("teacher_meta", "user_meta"):
+            meta = _as_dict(input_quality.get(meta_key))
+            for key in ("filename", "file_name", "path", "source_path", "video_path"):
+                parts.append(str(meta.get(key) or ""))
+    return " ".join(parts).lower()
+
+
+def _infer_from_manifest(
+    row: dict[str, str],
+    samples: list[dict[str, Any]],
+    report: dict[str, Any] | None = None,
+    summary: dict[str, Any] | None = None,
+) -> tuple[str, str]:
+    haystack = _sample_haystack(row, report, summary)
     for sample in samples:
         sample_id = _text(sample.get("sample_id"))
         sample_type = _text(sample.get("type"))
-        path_stem = Path(str(sample.get("path") or "")).stem
-        description = _text(sample.get("description"))
-        tokens = [sample_id, sample_type, path_stem, description]
+        sample_path = Path(str(sample.get("path") or ""))
+        path_stem = sample_path.stem
+        path_name = sample_path.name
+        tokens = [sample_id, path_stem, path_name]
         for token in tokens:
             token = token.lower().strip()
             if token and token in haystack:
                 return sample_id, sample_type
-    return "", _infer_sample_type(row)
+    return "", _infer_sample_type(row, report, summary)
 
 
-def _infer_sample_type(row: dict[str, str]) -> str:
-    text = " ".join(str(row.get(key) or "") for key in ("pipeline_id", "pair_name", "user_video_id", "note")).lower()
-    if "low_quality" in text or "480p" in text or "blur" in text:
-        return "low_quality"
-    if "slow" in text or "0_8" in text or "0.8" in text:
-        return "slow"
-    if "fast" in text or "1_2" in text or "1.2" in text:
-        return "fast"
-    if "offset" in text or "trim" in text:
-        return "start_offset"
+def _infer_sample_type(
+    row: dict[str, str],
+    report: dict[str, Any] | None = None,
+    summary: dict[str, Any] | None = None,
+) -> str:
+    text = _sample_haystack(row, report, summary)
     if "original" in text:
         return "original"
+    if "low_quality" in text or "480p" in text or "blur" in text or "compressed" in text:
+        return "low_quality"
+    if "slow" in text or "0_8" in text or "0.8" in text or "80pct" in text:
+        return "slow"
+    if "fast" in text or "1_2" in text or "1.2" in text or "120pct" in text:
+        return "fast"
+    if "offset" in text or "trim" in text or "delay" in text or "start" in text:
+        return "start_offset"
     return "unknown"
 
 
@@ -271,7 +306,7 @@ def collect_rows(search_roots: list[Path], pipeline_ids: list[str] | None = None
             "finished_at": _text(summary.get("finished_at") or report.get("finished_at") or report.get("created_at")),
             "note": "",
         }
-        sample_id, sample_type = _infer_from_manifest(row, samples)
+        sample_id, sample_type = _infer_from_manifest(row, samples, report, summary)
         row["sample_id"] = sample_id
         row["sample_type"] = sample_type
         row["note"] = _note(row, len(issues), severity_counts.get("high", 0))

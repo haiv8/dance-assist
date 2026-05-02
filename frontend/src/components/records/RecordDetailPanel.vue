@@ -40,8 +40,15 @@
           <strong>失败原因</strong>
           <span class="tag danger">{{ errorTypeText(detail.error_type) }}</span>
         </div>
-        <span class="helper-text">{{ detail.error_message || detail.message || "本次分析未成功完成。" }}</span>
-        <span v-if="detail.error_suggestion" class="helper-text failure-suggestion">{{ detail.error_suggestion }}</span>
+        <div class="failure-detail-grid">
+          <span class="helper-text">错误类型：{{ detail.error_type || "未标记" }}</span>
+          <span class="helper-text">用户可读原因：{{ failureMessage }}</span>
+          <span class="helper-text failure-suggestion">修复建议：{{ failureSuggestion }}</span>
+        </div>
+        <details v-if="detail.raw_error" class="raw-error-details">
+          <summary>查看开发调试信息</summary>
+          <pre>{{ detail.raw_error }}</pre>
+        </details>
       </div>
 
       <div v-if="inputQuality" class="list-item-card input-quality-card" :data-tone="inputQualityTone">
@@ -249,6 +256,16 @@ const inputQualityRecommendations = computed(() => {
 const detailConfidenceSummaryText = computed(() =>
   normalizedConfidenceSummary(props.detail?.report?.confidence, props.detail?.report?.confidence?.summary || props.detail?.confidence_summary),
 );
+const failureMessage = computed(() => (
+  props.detail?.error_message ||
+  props.detail?.message ||
+  errorTypeText(props.detail?.error_type) ||
+  "本次分析未成功完成。"
+));
+const failureSuggestion = computed(() => (
+  props.detail?.error_suggestion ||
+  fallbackFailureSuggestion(props.detail?.error_type)
+));
 
 const topJointSummary = computed(() => {
   const joints = props.detail?.report?.top_joints ?? props.detail?.top_joints;
@@ -306,6 +323,21 @@ function errorTypeText(value?: string | null) {
     timeout: "任务超时",
   };
   return value ? map[value] || value : "未知原因";
+}
+
+function fallbackFailureSuggestion(value?: string | null) {
+  const map: Record<string, string> = {
+    video_missing: "请确认教师或学员视频文件仍在本地素材库中，再重新发起分析。",
+    video_unreadable: "请换用可正常播放的视频，或重新导出为常见 MP4 格式。",
+    ffmpeg_missing: "请安装 ffmpeg/ffprobe，并确认命令行可以直接执行。",
+    pose_cache_missing: "请重新运行分析，让系统重新生成姿态缓存。",
+    model_missing: "请检查 models/pose_landmarker_full.task 是否存在。",
+    low_quality_input: "请改善拍摄角度、全身入镜、光照和遮挡情况后再试。",
+    pipeline_internal_error: "请保留任务 ID 和调试信息，重试后仍失败再检查后端日志。",
+    canceled: "任务已被取消，如需结果请重新发起分析。",
+    timeout: "请尝试使用更短的视频，或检查本机资源占用后重新分析。",
+  };
+  return value ? map[value] || "请根据错误类型检查输入视频和本地运行环境后重试。" : "请检查输入视频、模型文件和系统状态后重试。";
 }
 
 function stageText(stage?: string | null, status?: string | null) {
@@ -429,6 +461,35 @@ function formatDate(value?: string | null) {
 .failure-suggestion {
   color: var(--text);
   font-weight: 650;
+}
+
+.failure-detail-grid {
+  display: grid;
+  gap: 6px;
+}
+
+.raw-error-details {
+  border-top: 1px solid rgba(180, 35, 24, 0.12);
+  padding-top: 8px;
+}
+
+.raw-error-details summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.raw-error-details pre {
+  overflow-x: auto;
+  white-space: pre-wrap;
+  margin: 8px 0 0;
+  padding: 10px;
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.08);
+  color: var(--text);
+  font-size: 0.78rem;
+  line-height: 1.55;
 }
 
 .input-quality-card {
