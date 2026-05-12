@@ -9,8 +9,8 @@
     </div>
 
     <div v-if="points.length < 2" class="trend-empty">
-      <strong>至少需要两次分析才能观察趋势。</strong>
-      <span>用同一段教师示范再完成一次练习分析后，这里会显示分数和问题片段变化。</span>
+      <strong>趋势样本不足。</strong>
+      <span>同一教师示范再完成一次练习后显示变化。</span>
     </div>
 
     <template v-else>
@@ -89,21 +89,21 @@ const issueDelta = computed(() => (latestPoint.value?.issue_count ?? 0) - (first
 
 const headline = computed(() => {
   if (points.value.length < 2) return "等待更多练习记录";
-  if (scoreDelta.value > 0) return "最近一次较首次有所提升";
-  if (scoreDelta.value < 0) return "最近一次低于首次，建议检查动作稳定性";
-  return "最近一次与首次基本持平";
+  if (scoreDelta.value > 0) return "最近一次较首次提升";
+  if (scoreDelta.value < 0) return "最近一次低于首次";
+  return "最近一次与首次持平";
 });
 
 const notes = computed(() => {
   const result: string[] = [headline.value];
   const confidence = latestPoint.value?.confidence_score;
   if (typeof confidence === "number" && confidence < 0.45) {
-    result.push("最近结果可信度较低，趋势仅供参考。");
+    result.push("最近可信度较低，建议结合视频回看。");
   }
   if (issueDelta.value < 0) {
-    result.push("问题片段数量减少，复盘效果较好。");
+    result.push("问题片段减少，保持当前练法。");
   } else if (issueDelta.value > 0) {
-    result.push("问题片段数量增加，建议优先回看高优先级片段。");
+    result.push("问题片段增加，优先回看高优先级片段。");
   }
   return Array.from(new Set(result));
 });

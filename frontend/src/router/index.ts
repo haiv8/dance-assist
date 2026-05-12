@@ -12,18 +12,6 @@ export const router = createRouter({
     { path: "/upload", component: UploadPage },
     { path: "/compare", component: ComparePage },
     { path: "/records", component: RecordsPage },
-    {
-      path: "/tasks",
-      redirect: (to) => ({ path: "/records", query: { ...to.query, tab: "running" } }),
-    },
-    {
-      path: "/reports",
-      redirect: (to) => ({ path: "/records", query: { ...to.query, tab: "completed" } }),
-    },
-    {
-      path: "/issues",
-      redirect: (to) => ({ path: "/records", query: { ...to.query, tab: "issues" } }),
-    },
     { path: "/settings", component: SystemSettingsPage },
   ],
 });

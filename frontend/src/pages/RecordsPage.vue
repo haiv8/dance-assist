@@ -3,8 +3,8 @@
     <section class="surface-card page-head records-head">
       <div class="page-head-row">
         <div>
-          <h1>分析记录</h1>
-          <p class="page-subtitle">把任务、报告和问题片段合并到一处，减少切页，把主要操作收回到记录本身。</p>
+          <h1>分析记录 <InfoHint text="集中查看历史报告、问题片段、练习项目和导出动作。" /></h1>
+          <p class="page-subtitle">筛选记录，进入复盘。</p>
         </div>
         <div class="action-row">
           <button class="secondary-button" :disabled="loading || issueLoading" @click="refreshWorkspace">
@@ -33,17 +33,79 @@
         </div>
       </div>
 
-      <div class="export-center">
+    </section>
+
+    <section class="surface-card records-toolbar">
+      <div class="records-toolbar-main">
+        <div class="tab-row">
+          <button
+            v-for="tab in tabs"
+            :key="tab.key"
+            type="button"
+            class="tab-chip secondary-button"
+            :class="{ active: activeTab === tab.key }"
+            @click="setTab(tab.key)"
+          >
+            {{ tab.label }}
+          </button>
+        </div>
+
+        <div class="records-toolbar-grid">
+          <div class="field-block">
+            <label class="field-label">检索</label>
+            <input
+              v-model.trim="search"
+              type="text"
+              :placeholder="activeTab === 'issues' ? '报告名称或问题摘要' : activeTab === 'projects' ? '教师视频或项目名称' : '记录名称或任务 ID'"
+            />
+          </div>
+
+          <div class="field-block" v-if="activeTab !== 'issues' && activeTab !== 'projects'">
+            <label class="field-label">状态</label>
+            <select v-model="statusFilter">
+              <option value="all">全部状态</option>
+              <option value="pending">等待中</option>
+              <option value="running">分析中</option>
+              <option value="done">已完成</option>
+              <option value="failed">失败</option>
+              <option value="canceled">已取消</option>
+            </select>
+          </div>
+
+          <div class="field-block" v-else-if="activeTab === 'issues'">
+            <label class="field-label">问题类型</label>
+            <select v-model="issueTypeFilter">
+              <option value="all">全部类型</option>
+              <option value="pose_error">动作误差</option>
+              <option value="tempo">节奏异常</option>
+              <option value="confidence">可信度风险</option>
+              <option value="tracking_bad">跟踪问题</option>
+            </select>
+          </div>
+
+          <div class="field-block" v-else>
+            <label class="field-label">聚合方式</label>
+            <div class="counter-value">按教师视频</div>
+          </div>
+
+          <div class="field-block compact-counter">
+            <label class="field-label">结果数</label>
+            <div class="counter-value">{{ activeTab === "issues" ? filteredIssues.length : activeTab === "projects" ? filteredProjects.length : filteredRecords.length }}</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="records-export-strip">
         <div>
-          <strong>导出中心</strong>
-          <p class="helper-text">{{ exportCenterHint }}</p>
+          <strong>导出</strong>
+          <span class="helper-text">{{ exportCenterHint }}</span>
         </div>
         <div class="export-actions">
           <button class="secondary-button" :disabled="exportingCsv" @click="exportRecordsCsv">
-            {{ exportingCsv ? "导出中..." : "导出记录 CSV" }}
+            {{ exportingCsv ? "导出中..." : "记录 CSV" }}
           </button>
           <button class="secondary-button" :disabled="!selectedExportPipelineId || copyingId === selectedExportPipelineId" @click="copySelectedPipelineId">
-            {{ copyingId === selectedExportPipelineId ? "已复制" : "复制当前 pipeline_id" }}
+            {{ copyingId === selectedExportPipelineId ? "已复制" : "复制 pipeline_id" }}
           </button>
           <a
             v-if="selectedReportUrl"
@@ -52,73 +114,14 @@
             target="_blank"
             rel="noreferrer"
           >
-            打开当前 report.json
+            report.json
           </a>
-          <button v-else class="secondary-button" type="button" disabled>打开当前 report.json</button>
+          <button v-else class="secondary-button" type="button" disabled>report.json</button>
           <button class="secondary-button" type="button" :disabled="!markdownCommand || copyingMarkdownCommand" @click="copyMarkdownCommand">
-            {{ copyingMarkdownCommand ? "已复制命令" : "复制 Markdown 导出命令" }}
+            {{ copyingMarkdownCommand ? "已复制" : "Markdown 命令" }}
           </button>
         </div>
         <code v-if="markdownCommand" class="export-command">{{ markdownCommand }}</code>
-      </div>
-    </section>
-
-    <section class="surface-card records-toolbar">
-      <div class="tab-row">
-        <button
-          v-for="tab in tabs"
-          :key="tab.key"
-          type="button"
-          class="tab-chip secondary-button"
-          :class="{ active: activeTab === tab.key }"
-          @click="setTab(tab.key)"
-        >
-          {{ tab.label }}
-        </button>
-      </div>
-
-      <div class="records-toolbar-grid">
-        <div class="field-block">
-          <label class="field-label">检索</label>
-          <input
-            v-model.trim="search"
-            type="text"
-            :placeholder="activeTab === 'issues' ? '按报告名称或问题摘要搜索' : activeTab === 'projects' ? '按教师视频或项目名称搜索' : '按记录名称或任务 ID 搜索'"
-          />
-        </div>
-
-        <div class="field-block" v-if="activeTab !== 'issues' && activeTab !== 'projects'">
-          <label class="field-label">状态</label>
-          <select v-model="statusFilter">
-            <option value="all">全部状态</option>
-            <option value="pending">等待中</option>
-            <option value="running">分析中</option>
-            <option value="done">已完成</option>
-            <option value="failed">失败</option>
-            <option value="canceled">已取消</option>
-          </select>
-        </div>
-
-        <div class="field-block" v-else-if="activeTab === 'issues'">
-          <label class="field-label">问题类型</label>
-          <select v-model="issueTypeFilter">
-            <option value="all">全部类型</option>
-            <option value="pose_error">动作误差</option>
-            <option value="tempo">节奏异常</option>
-            <option value="confidence">可信度风险</option>
-            <option value="tracking_bad">跟踪问题</option>
-          </select>
-        </div>
-
-        <div class="field-block" v-else>
-          <label class="field-label">聚合方式</label>
-          <div class="counter-value">按教师视频</div>
-        </div>
-
-        <div class="field-block compact-counter">
-          <label class="field-label">结果数</label>
-          <div class="counter-value">{{ activeTab === "issues" ? filteredIssues.length : activeTab === "projects" ? filteredProjects.length : filteredRecords.length }}</div>
-        </div>
       </div>
     </section>
 
@@ -132,6 +135,7 @@
       </div>
 
       <div class="records-table-head" v-else-if="activeTab !== 'issues'">
+        <span></span>
         <span></span>
         <span>记录</span>
         <span>状态</span>
@@ -169,13 +173,13 @@
 
       <div v-else-if="activeTab === 'issues' && issueLoading" class="feedback-state" data-tone="loading">
         <strong class="feedback-state-title">问题片段整理中</strong>
-        <span class="feedback-state-copy">正在从已完成分析中提取问题标记和可信度风险，请稍候。</span>
+        <span class="feedback-state-copy">正在生成可回放片段...</span>
       </div>
 
       <EmptyState
         v-else-if="activeTab === 'issues' && !filteredIssues.length"
-        title="当前没有可回放的问题片段"
-        copy="当前没有可回放的问题片段，可能是分析未完成或报告没有生成 issues。"
+        title="暂无可回放问题"
+        copy="完成一次分析后会显示问题片段。"
       >
         <template #actions>
           <button class="secondary-button" type="button" @click="goToCompare">去开始分析</button>
@@ -184,13 +188,13 @@
 
       <div v-else-if="activeTab === 'projects' && projectLoading" class="feedback-state" data-tone="loading">
         <strong class="feedback-state-title">练习项目整理中</strong>
-        <span class="feedback-state-copy">正在按教师视频聚合同一舞蹈片段下的多次分析记录。</span>
+        <span class="feedback-state-copy">正在聚合趋势和历史练习...</span>
       </div>
 
       <EmptyState
         v-else-if="activeTab === 'projects' && !filteredProjects.length"
-        title="至少需要两次分析才能观察趋势"
-        copy="围绕同一段教师示范完成两次或更多练习分析后，这里会显示练习项目和进步变化。"
+        title="趋势样本不足"
+        copy="同一教师示范至少完成两次练习后生成趋势。"
       >
         <template #actions>
           <button class="secondary-button" type="button" @click="goToCompare">继续分析一次</button>
@@ -199,8 +203,8 @@
 
       <EmptyState
         v-else-if="activeTab !== 'issues' && !filteredRecords.length"
-        :title="records.length ? '当前筛选下没有分析记录' : '还没有分析记录'"
-        :copy="records.length ? '可以切换状态筛选，或清空搜索条件。' : '完成一次分析后，这里会显示报告和问题片段。'"
+        :title="records.length ? '筛选无结果' : '还没有分析记录'"
+        :copy="records.length ? '切换筛选或清空搜索。' : '开始第一次分析后生成报告和问题片段。'"
       >
         <template #actions>
           <button class="secondary-button" type="button" @click="goToCompare">
@@ -229,7 +233,7 @@
           <button type="button" class="project-row" :class="{ active: selectedProjectId === project.teacher_video_id }" @click="toggleProject(project.teacher_video_id)">
             <div class="project-main">
               <strong>{{ project.teacher_filename || project.teacher_video_id }}</strong>
-              <p class="helper-text">同一教师示范下的练习记录：{{ project.analysis_count }} 次</p>
+              <p class="helper-text">{{ project.analysis_count }} 次练习，展开查看趋势。</p>
             </div>
             <div class="project-metric">
               <span>最近分</span>
@@ -252,7 +256,7 @@
           <div v-if="selectedProjectId === project.teacher_video_id" class="project-detail">
             <div v-if="projectDetailLoading" class="feedback-state" data-tone="loading">
               <strong class="feedback-state-title">项目详情加载中</strong>
-              <span class="feedback-state-copy">正在读取该教师视频下的历史练习记录。</span>
+              <span class="feedback-state-copy">正在读取历史记录...</span>
             </div>
             <template v-else-if="projectDetail">
               <PracticeTrendCard :trend="projectDetail.trend" />
@@ -321,7 +325,7 @@
             </button>
           </div>
 
-          <div v-if="selectedRecordId === item.pipeline_id" ref="detailPanelRef">
+          <div v-if="selectedRecordId === item.pipeline_id" ref="detailPanelRef" class="record-detail-slot">
             <RecordDetailPanel
               :item="item"
               :detail="detail"
@@ -359,716 +363,120 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
-import { useRoute, useRouter } from "vue-router";
-import { absMediaUrl } from "../api/http";
-import { deletePipelineTask, getPipelineResultSummary } from "../api/pipelines";
-import { downloadRecordsCsv, getPracticeProject, getPracticeProjects, updateRecordFlags } from "../api/records";
 import EmptyState from "../components/EmptyState.vue";
+import InfoHint from "../components/InfoHint.vue";
 import IssueList from "../components/records/IssueList.vue";
 import PracticeTrendCard from "../components/records/PracticeTrendCard.vue";
 import RecordDetailPanel from "../components/records/RecordDetailPanel.vue";
-import { useAiCoach } from "../composables/useAiCoach";
-import { isRunningTaskStatus, useRecordActions } from "../composables/useRecordActions";
-import { mapIssueItems, useRecordsWorkspace } from "../composables/useRecordsWorkspace";
-import { normalizedConfidenceSummary } from "../utils/confidence";
-import { focusDetailPanel } from "../utils/detailPanel";
-import { compactPipelineId } from "../utils/display";
-import { friendlyError } from "../utils/errors";
-import type {
-  IssueReplayItem,
-  PipelineResultSummaryResponse,
-  PipelineStatusType,
-  PracticeProjectDetailResponse,
-  PracticeProjectItem,
-  RecordWorkspaceItem,
-} from "../types/video";
+import { useRecordsPage } from "../composables/useRecordsPage";
 
-type WorkspaceTab = "all" | "starred" | "running" | "completed" | "projects" | "issues";
-type RecordItem = RecordWorkspaceItem;
-
-const router = useRouter();
-const route = useRoute();
-
-const tabs: Array<{ key: WorkspaceTab; label: string }> = [
-  { key: "all", label: "全部记录" },
-  { key: "starred", label: "重点记录" },
-  { key: "running", label: "进行中" },
-  { key: "completed", label: "已完成" },
-  { key: "projects", label: "练习项目" },
-  { key: "issues", label: "问题片段" },
-];
-
+const page = useRecordsPage();
 const {
+  tabs,
   records,
   loading,
   issueLoading,
   error,
   issueItems,
-  loadWorkspace: loadRecordsWorkspace,
-  removePipeline,
-} = useRecordsWorkspace();
-const activeTab = ref<WorkspaceTab>("all");
-const search = ref("");
-const statusFilter = ref<PipelineStatusType | "all">("all");
-const issueTypeFilter = ref("all");
-const projects = ref<PracticeProjectItem[]>([]);
-const projectLoading = ref(false);
-const projectError = ref("");
-const selectedProjectId = ref("");
-const projectDetail = ref<PracticeProjectDetailResponse | null>(null);
-const projectDetailLoading = ref(false);
-const exportingCsv = ref(false);
-const copyingMarkdownCommand = ref(false);
-const flagSavingId = ref("");
-const noteDraft = ref("");
-
-const selectedRecordId = ref("");
-const selectedIssueId = ref("");
-const detail = ref<PipelineResultSummaryResponse | null>(null);
-const detailLoading = ref(false);
-const detailError = ref("");
-const detailPanelRef = ref<HTMLElement | null>(null);
-
-const {
   aiCoach,
   aiCoachLoading,
   aiCoachError,
   aiCoachSourceText,
   aiCoachFallbackHint,
-  clearAiCoach,
-  loadAiCoach,
-} = useAiCoach();
-const {
   copyingId,
   deletingId,
   cancelingId,
   bulkDeleting,
-  actionError,
   canDeletePipelineId,
-  copyPipelineId: copyRecordPipelineId,
-  cancelPipelineRecord,
-  deletePipelineRecord,
-} = useRecordActions(records);
-const selectedPipelineIds = ref<Set<string>>(new Set());
-
-const runningCount = computed(() => records.value.filter((item) => item.status === "pending" || item.status === "running").length);
-const completedCount = computed(() => records.value.filter((item) => item.status === "done").length);
-
-const filteredProjects = computed(() => {
-  const keyword = search.value.trim().toLowerCase();
-  return projects.value.filter((item) => {
-    const text = `${item.teacher_filename || ""} ${item.teacher_video_id || ""} ${item.latest_pipeline_id || ""}`.toLowerCase();
-    return !keyword || text.includes(keyword);
-  });
-});
-
-const filteredRecords = computed(() => {
-  const keyword = search.value.trim().toLowerCase();
-  return records.value.filter((item) => {
-    const text = `${item.pair_name || ""} ${item.pipeline_id}`.toLowerCase();
-    const matchesKeyword = !keyword || text.includes(keyword);
-
-    if (activeTab.value === "starred" && !item.starred) return false;
-    if (activeTab.value === "running" && item.status !== "pending" && item.status !== "running") return false;
-    if (activeTab.value === "completed" && item.status !== "done") return false;
-    if (statusFilter.value !== "all" && item.status !== statusFilter.value) return false;
-
-    return matchesKeyword;
-  });
-});
-
-const filteredIssues = computed(() => {
-  const keyword = search.value.trim().toLowerCase();
-  return issueItems.value.filter((item) => {
-    const matchesKeyword =
-      !keyword ||
-      item.pairName.toLowerCase().includes(keyword) ||
-      item.summary.toLowerCase().includes(keyword);
-    const matchesType = issueTypeFilter.value === "all" || item.type === issueTypeFilter.value;
-    return matchesKeyword && matchesType;
-  });
-});
-
-const visiblePipelineIds = computed(() => {
-  if (activeTab.value === "projects") return [];
-  const ids = activeTab.value === "issues"
-    ? filteredIssues.value.map((item) => item.pipelineId)
-    : filteredRecords.value.map((item) => item.pipeline_id);
-  return Array.from(new Set(ids));
-});
-
-const visibleDeletablePipelineIds = computed(() => visiblePipelineIds.value.filter((pipelineId) => canDeletePipelineId(pipelineId)));
-const selectedVisibleDeletablePipelineIds = computed(() =>
-  visibleDeletablePipelineIds.value.filter((pipelineId) => selectedPipelineIds.value.has(pipelineId)),
-);
-const allVisibleSelected = computed(() =>
-  Boolean(visibleDeletablePipelineIds.value.length && visibleDeletablePipelineIds.value.every((pipelineId) => selectedPipelineIds.value.has(pipelineId))),
-);
-const someVisibleSelected = computed(() =>
-  visibleDeletablePipelineIds.value.some((pipelineId) => selectedPipelineIds.value.has(pipelineId)),
-);
-
-const selectedRecord = computed(() => records.value.find((item) => item.pipeline_id === selectedRecordId.value) ?? null);
-const selectedIssue = computed(() => filteredIssues.value.find((item) => item.id === selectedIssueId.value) ?? null);
-const selectedExportRecord = computed(() => detail.value ?? selectedRecord.value);
-const selectedExportPipelineId = computed(() => selectedExportRecord.value?.pipeline_id || selectedRecordId.value || "");
-const selectedReportUrl = computed(() => {
-  const reportUrl = selectedExportRecord.value?.files?.report_url;
-  return reportUrl ? absMediaUrl(reportUrl) : "";
-});
-const markdownCommand = computed(() => {
-  const record = selectedExportRecord.value;
-  if (!record || record.status !== "done" || !selectedExportPipelineId.value) return "";
-  return `python scripts/export-analysis-report-md.py --pipeline-id ${selectedExportPipelineId.value}`;
-});
-const exportCenterHint = computed(() => {
-  const record = selectedExportRecord.value;
-  if (!record) return "可先导出当前记录列表；如需导出单条 Markdown，请先选择一条已完成记录。";
-  if (record.status !== "done") return "当前记录还未完成，Markdown 导出命令会在分析完成后可用。";
-  return "当前已选择完成记录，可复制任务 ID、打开 report.json，或复制 Markdown 导出命令。";
-});
-const canCancelSelectedRecord = computed(() => {
-  const item = detail.value ?? selectedRecord.value;
-  return Boolean(item && isRunningTaskStatus(item.status) && !item.cancel_requested);
-});
-const canDeleteSelectedRecord = computed(() => {
-  const item = detail.value ?? selectedRecord.value;
-  return Boolean(item && item.status !== "pending" && item.status !== "running");
-});
-const canOpenSelectedInCompare = computed(() => Boolean(selectedRecord.value?.teacher_video_id && selectedRecord.value?.user_video_id));
-const detailIssues = computed<IssueReplayItem[]>(() => (Array.isArray(detail.value?.issues) ? mapIssueItems(detail.value?.issues || []) : []));
-
-function setSelectedPipelineIds(nextIds: Iterable<string>) {
-  selectedPipelineIds.value = new Set(nextIds);
-}
-
-function clearSelection() {
-  setSelectedPipelineIds([]);
-}
-
-function togglePipelineSelection(pipelineId: string) {
-  if (!canDeletePipelineId(pipelineId) || bulkDeleting.value) return;
-  const next = new Set(selectedPipelineIds.value);
-  if (next.has(pipelineId)) {
-    next.delete(pipelineId);
-  } else {
-    next.add(pipelineId);
-  }
-  setSelectedPipelineIds(next);
-}
-
-function toggleSelectAllVisible() {
-  const next = new Set(selectedPipelineIds.value);
-  if (allVisibleSelected.value) {
-    for (const pipelineId of visibleDeletablePipelineIds.value) next.delete(pipelineId);
-  } else {
-    for (const pipelineId of visibleDeletablePipelineIds.value) next.add(pipelineId);
-  }
-  setSelectedPipelineIds(next);
-}
-
-function parseTab(value: unknown): WorkspaceTab {
-  if (value === "starred" || value === "running" || value === "completed" || value === "projects" || value === "issues" || value === "all") return value;
-  return "all";
-}
-
-function routeQueryString(value: unknown) {
-  return typeof value === "string" ? value : "";
-}
-
-function setTab(tab: WorkspaceTab) {
-  activeTab.value = tab;
-  const nextQuery = { ...route.query, tab };
-  void router.replace({ path: "/records", query: nextQuery });
-}
-
-function goToCompare() {
-  void router.push("/compare");
-}
-
-async function refreshWorkspace() {
-  await loadWorkspace();
-}
-
-function csvExportStatus(): "done" | "failed" | "running" | undefined {
-  if (statusFilter.value === "done" || statusFilter.value === "failed" || statusFilter.value === "running") {
-    return statusFilter.value;
-  }
-  if (activeTab.value === "completed") return "done";
-  if (activeTab.value === "running") return "running";
-  return undefined;
-}
-
-async function exportRecordsCsv() {
-  if (exportingCsv.value) return;
-  exportingCsv.value = true;
-  error.value = "";
-  try {
-    const blob = await downloadRecordsCsv({
-      limit: 200,
-      starred: activeTab.value === "starred" ? true : undefined,
-      status: csvExportStatus(),
-    });
-    const url = window.URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    const date = new Date().toISOString().slice(0, 10);
-    anchor.href = url;
-    anchor.download = `dance_assist_records_${date}.csv`;
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
-    window.URL.revokeObjectURL(url);
-  } catch (err: any) {
-    error.value = friendlyError(err, "CSV 导出失败");
-  } finally {
-    exportingCsv.value = false;
-  }
-}
-
-async function loadProjects() {
-  projectLoading.value = true;
-  projectError.value = "";
-  try {
-    const data = await getPracticeProjects(200);
-    projects.value = data.items;
-  } catch (err: any) {
-    projectError.value = friendlyError(err, "练习项目加载失败");
-  } finally {
-    projectLoading.value = false;
-  }
-}
-
-async function loadWorkspace() {
-  await loadRecordsWorkspace(100);
-  await loadProjects();
-  if (!error.value) {
-    await hydrateSelectionFromRoute();
-  }
-}
-
-async function hydrateSelectionFromRoute() {
-  const tab = parseTab(route.query.tab);
-  activeTab.value = tab;
-
-  const pipelineId = routeQueryString(route.query.pipeline);
-  const sec = Number(routeQueryString(route.query.sec));
-  const projectId = routeQueryString(route.query.project);
-
-  if (tab === "issues") {
-    if (pipelineId) {
-      const hit = filteredIssues.value.find((item) => item.pipelineId === pipelineId && (!Number.isFinite(sec) || Math.abs(item.sec - sec) < 0.11));
-      if (hit) {
-        await openIssue(hit.id);
-      }
-    }
-    return;
-  }
-
-  if (tab === "projects") {
-    if (projectId && projects.value.some((item) => item.teacher_video_id === projectId)) {
-      await openProject(projectId);
-    }
-    return;
-  }
-
-  if (pipelineId && records.value.some((item) => item.pipeline_id === pipelineId)) {
-    await openRecord(pipelineId);
-  }
-}
-
-async function openRecord(pipelineId: string) {
-  selectedRecordId.value = pipelineId;
-  selectedIssueId.value = "";
-  noteDraft.value = records.value.find((item) => item.pipeline_id === pipelineId)?.user_note || "";
-  detailLoading.value = true;
-  detailError.value = "";
-  clearAiCoach();
-  try {
-    detail.value = await getPipelineResultSummary(pipelineId);
-    focusDetailPanel(detailPanelRef, { forceScroll: true });
-  } catch (err: any) {
-    detail.value = null;
-    detailError.value = friendlyError(err, "记录详情加载失败");
-  } finally {
-    detailLoading.value = false;
-  }
-}
-
-function applyRecordFlags(pipelineId: string, flags: { starred?: boolean; note?: string; updated_at?: string | null }) {
-  records.value = records.value.map((item) => (
-    item.pipeline_id === pipelineId
-      ? {
-          ...item,
-          starred: Boolean(flags.starred),
-          user_note: flags.note || "",
-          flag_updated_at: flags.updated_at || item.flag_updated_at || null,
-        }
-      : item
-  ));
-}
-
-async function toggleRecordStar(item: RecordItem) {
-  if (!item?.pipeline_id || flagSavingId.value) return;
-  flagSavingId.value = item.pipeline_id;
-  error.value = "";
-  detailError.value = "";
-  try {
-    const next = await updateRecordFlags(item.pipeline_id, {
-      starred: !item.starred,
-      note: item.user_note || "",
-    });
-    applyRecordFlags(item.pipeline_id, next);
-    if (selectedRecordId.value === item.pipeline_id) {
-      noteDraft.value = next.note || "";
-    }
-  } catch (err: any) {
-    const message = friendlyError(err, "重点标记保存失败");
-    error.value = message;
-    if (selectedRecordId.value === item.pipeline_id) detailError.value = message;
-  } finally {
-    flagSavingId.value = "";
-  }
-}
-
-async function saveRecordNote(pipelineId: string) {
-  if (!pipelineId || flagSavingId.value) return;
-  const item = records.value.find((record) => record.pipeline_id === pipelineId);
-  flagSavingId.value = pipelineId;
-  error.value = "";
-  detailError.value = "";
-  try {
-    const next = await updateRecordFlags(pipelineId, {
-      starred: Boolean(item?.starred),
-      note: noteDraft.value,
-    });
-    applyRecordFlags(pipelineId, next);
-    noteDraft.value = next.note || "";
-  } catch (err: any) {
-    const message = friendlyError(err, "复盘备注保存失败");
-    error.value = message;
-    detailError.value = message;
-  } finally {
-    flagSavingId.value = "";
-  }
-}
-
-function closeRecordDetail() {
-  selectedRecordId.value = "";
-  detail.value = null;
-  detailError.value = "";
-  noteDraft.value = "";
-  clearAiCoach();
-}
-
-async function toggleRecord(pipelineId: string) {
-  if (pipelineId === selectedRecordId.value && detail.value) {
-    closeRecordDetail();
-    return;
-  }
-  await openRecord(pipelineId);
-}
-
-async function openProject(projectId: string) {
-  selectedProjectId.value = projectId;
-  selectedRecordId.value = "";
-  selectedIssueId.value = "";
-  projectDetailLoading.value = true;
-  projectError.value = "";
-  try {
-    projectDetail.value = await getPracticeProject(projectId, 200);
-  } catch (err: any) {
-    projectDetail.value = null;
-    projectError.value = friendlyError(err, "练习项目详情加载失败");
-  } finally {
-    projectDetailLoading.value = false;
-  }
-}
-
-function closeProject() {
-  selectedProjectId.value = "";
-  projectDetail.value = null;
-}
-
-async function toggleProject(projectId: string) {
-  if (projectId === selectedProjectId.value && projectDetail.value) {
-    closeProject();
-    return;
-  }
-  void router.replace({ path: "/records", query: { ...route.query, tab: "projects", project: projectId } });
-  await openProject(projectId);
-}
-
-function openProjectRecord(pipelineId?: string | null) {
-  if (!pipelineId) return;
-  statusFilter.value = "all";
-  void router.replace({ path: "/records", query: { pipeline: pipelineId, tab: "completed" } });
-  activeTab.value = "completed";
-  void openRecord(pipelineId);
-}
-
-async function openIssue(issueId: string) {
-  selectedIssueId.value = issueId;
-  selectedRecordId.value = "";
-  await Promise.resolve();
-  focusDetailPanel(detailPanelRef, { forceScroll: true });
-}
-
-function closeIssueDetail() {
-  selectedIssueId.value = "";
-}
-
-async function toggleIssue(issueId: string) {
-  if (issueId === selectedIssueId.value) {
-    closeIssueDetail();
-    return;
-  }
-  await openIssue(issueId);
-}
-
-async function copyPipelineId(pipelineId: string) {
-  await copyRecordPipelineId(pipelineId);
-  if (actionError.value) detailError.value = actionError.value;
-}
-
-async function copySelectedPipelineId() {
-  if (!selectedExportPipelineId.value) return;
-  await copyPipelineId(selectedExportPipelineId.value);
-}
-
-async function copyMarkdownCommand() {
-  if (!markdownCommand.value) return;
-  copyingMarkdownCommand.value = true;
-  detailError.value = "";
-  error.value = "";
-  try {
-    await navigator.clipboard.writeText(markdownCommand.value);
-    window.setTimeout(() => {
-      copyingMarkdownCommand.value = false;
-    }, 1000);
-  } catch (err: any) {
-    copyingMarkdownCommand.value = false;
-    error.value = friendlyError(err, "Markdown 导出命令复制失败");
-  }
-}
-
-async function loadDetailAiCoach(pipelineId: string) {
-  await loadAiCoach(pipelineId);
-}
-
-async function cancelSelectedRecord() {
-  const pipelineId = selectedRecordId.value;
-  if (!pipelineId || !canCancelSelectedRecord.value) return;
-
-  detailError.value = "";
-  const status = await cancelPipelineRecord(pipelineId);
-  if (!status) {
-    detailError.value = actionError.value;
-    return;
-  }
-  records.value = records.value.map((item) => (item.pipeline_id === pipelineId ? { ...item, ...status } : item));
-  detail.value = detail.value ? { ...detail.value, ...status } : detail.value;
-}
-
-async function deletePipeline(pipelineId: string) {
-  const record = records.value.find((item) => item.pipeline_id === pipelineId);
-  const label = record?.pair_name || pipelineId;
-  const confirmed = window.confirm(`确认删除“${label}”吗？相关任务、报告和问题片段会一起移除。`);
-  if (!confirmed) return;
-
-  const ok = await deletePipelineRecord(pipelineId);
-  if (!ok) {
-    error.value = actionError.value;
-    detailError.value = actionError.value;
-    return;
-  }
-  removePipeline(pipelineId);
-  void loadProjects();
-  const nextSelection = new Set(selectedPipelineIds.value);
-  nextSelection.delete(pipelineId);
-  setSelectedPipelineIds(nextSelection);
-  if (selectedRecordId.value === pipelineId) closeRecordDetail();
-  if (selectedIssue.value?.pipelineId === pipelineId) closeIssueDetail();
-}
-
-async function deleteSelectedPipelines() {
-  const pipelineIds = selectedVisibleDeletablePipelineIds.value;
-  if (!pipelineIds.length || bulkDeleting.value) return;
-
-  const confirmed = window.confirm(`确认删除选中的 ${pipelineIds.length} 条记录吗？相关任务、报告和问题片段会一起移除。`);
-  if (!confirmed) return;
-
-  bulkDeleting.value = true;
-  error.value = "";
-  const failed: string[] = [];
-  try {
-    for (const pipelineId of pipelineIds) {
-      deletingId.value = pipelineId;
-      try {
-        await deletePipelineTask(pipelineId);
-        removePipeline(pipelineId);
-        if (selectedRecordId.value === pipelineId) closeRecordDetail();
-        if (selectedIssue.value?.pipelineId === pipelineId) closeIssueDetail();
-      } catch (err: any) {
-        failed.push(friendlyError(err, `删除 ${pipelineId} 失败`));
-      }
-    }
-  } finally {
-    deletingId.value = "";
-    bulkDeleting.value = false;
-    const remaining = new Set(selectedPipelineIds.value);
-    for (const pipelineId of pipelineIds) {
-      if (!failed.length || !records.value.some((item) => item.pipeline_id === pipelineId)) {
-        remaining.delete(pipelineId);
-      }
-    }
-    setSelectedPipelineIds(remaining);
-  }
-
-  if (failed.length) {
-    error.value = `有 ${failed.length} 条记录删除失败：${failed[0]}`;
-  }
-  void loadProjects();
-}
-
-function openSelectedInCompare() {
-  const record = selectedRecord.value;
-  if (!record?.teacher_video_id || !record?.user_video_id) return;
-  void router.push({
-    path: "/compare",
-    query: {
-      pipeline: record.pipeline_id,
-      teacher: record.teacher_video_id,
-      user: record.user_video_id,
-    },
-  });
-}
-
-function openIssueRecord(issue: IssueReplayItem) {
-  void router.replace({ path: "/records", query: { pipeline: issue.pipelineId, tab: "completed" } });
-  activeTab.value = "completed";
-  void openRecord(issue.pipelineId);
-}
-
-function jumpIssueToCompare(issue: IssueReplayItem) {
-  if (!issue.teacherVideoId || !issue.userVideoId) return;
-  void router.push({
-    path: "/compare",
-    query: {
-      pipeline: issue.pipelineId,
-      teacher: issue.teacherVideoId,
-      user: issue.userVideoId,
-      sec: String(issue.sec),
-      mode: "local",
-    },
-  });
-}
-
-function recordLead(item: Partial<RecordItem>) {
-  if (isRunningTaskStatus(item.status)) {
-    return item.message || `${stageText(item.stage, item.status)}，这条记录仍在处理中。`;
-  }
-  if (item.status === "failed") {
-    return item.error_message || item.message || "本条分析未成功完成，请先查看异常信息或尝试重新处理。";
-  }
-  return (
-    item.overall_advice ||
-    item.beginner_summary ||
-    item.teaching_summary ||
-    normalizedConfidenceSummary(null, item.confidence_summary) ||
-    "本条记录已完成，可展开查看摘要、输出文件和问题片段。"
-  );
-}
-
-function failedRecordMeta(item: Partial<RecordItem>) {
-  const message = item.error_message || item.message || errorTypeText(item.error_type);
-  return `失败：${message || "请查看详情"}`;
-}
-
-function statusText(status?: string | null) {
-  if (status === "pending") return "等待中";
-  if (status === "running") return "分析中";
-  if (status === "done") return "已完成";
-  if (status === "failed") return "失败";
-  if (status === "canceled") return "已取消";
-  return status || "未知";
-}
-
-function statusTone(status?: string | null) {
-  if (status === "done") return "ok";
-  if (status === "failed") return "danger";
-  if (status === "canceled") return "neutral";
-  if (status === "pending" || status === "running") return "warn";
-  return "neutral";
-}
-
-function errorTypeText(value?: string | null) {
-  const map: Record<string, string> = {
-    video_missing: "视频文件不存在",
-    video_unreadable: "视频无法读取",
-    ffmpeg_missing: "缺少 ffmpeg",
-    pose_cache_missing: "姿态缓存缺失",
-    model_missing: "模型缺失",
-    low_quality_input: "输入质量不足",
-    pipeline_internal_error: "内部异常",
-    canceled: "用户取消",
-    timeout: "任务超时",
-  };
-  return value ? map[value] || value : "未知原因";
-}
-
-function stageText(stage?: string | null, status?: string | null) {
-  if (stage === "queued") return "已进入队列";
-  if (stage === "preparing_inputs") return "准备素材";
-  if (stage === "extracting_pose") return "提取骨架";
-  if (stage === "aligning_motion") return "动作对齐与评分";
-  if (stage === "rendering_outputs") return "生成对比输出";
-  if (stage === "packaging_results") return "整理结果";
-  if (stage === "completed") return "结果已就绪";
-  if (stage === "failed") return "任务失败";
-  if (stage === "canceled") return "任务已取消";
-  return statusText(status);
-}
-
-function confidenceText(value?: number | string | null) {
-  const num = Number(value);
-  if (!Number.isFinite(num)) return "--";
-  return `${Math.round(num * 100)}%`;
-}
-
-function scoreText(value?: number | string | null) {
-  const num = Number(value);
-  if (!Number.isFinite(num)) return "--";
-  return num.toFixed(1);
-}
-
-function formatDate(value?: string | null) {
-  if (!value) return "--";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString("zh-CN", { hour12: false });
-}
-
-watch(
-  () => route.query.tab,
-  (value) => {
-    const nextTab = parseTab(value);
-    activeTab.value = nextTab;
-  },
-);
-
-watch(
-  () => [route.query.pipeline, route.query.sec, route.query.tab, route.query.project],
-  async () => {
-    if (!records.value.length) return;
-    await hydrateSelectionFromRoute();
-  },
-);
-
-onMounted(async () => {
-  activeTab.value = parseTab(route.query.tab);
-  await loadWorkspace();
-});
+  activeTab,
+  search,
+  statusFilter,
+  issueTypeFilter,
+  projects,
+  projectLoading,
+  projectError,
+  selectedProjectId,
+  projectDetail,
+  projectDetailLoading,
+  exportingCsv,
+  copyingMarkdownCommand,
+  flagSavingId,
+  noteDraft,
+  selectedRecordId,
+  selectedIssueId,
+  detail,
+  detailLoading,
+  detailError,
+  detailPanelRef,
+  selectedPipelineIds,
+  runningCount,
+  completedCount,
+  filteredProjects,
+  filteredRecords,
+  filteredIssues,
+  visiblePipelineIds,
+  visibleDeletablePipelineIds,
+  selectedVisibleDeletablePipelineIds,
+  allVisibleSelected,
+  someVisibleSelected,
+  selectedRecord,
+  selectedIssue,
+  selectedExportRecord,
+  selectedExportPipelineId,
+  selectedReportUrl,
+  markdownCommand,
+  exportCenterHint,
+  canCancelSelectedRecord,
+  canDeleteSelectedRecord,
+  canOpenSelectedInCompare,
+  detailIssues,
+  setSelectedPipelineIds,
+  clearSelection,
+  togglePipelineSelection,
+  toggleSelectAllVisible,
+  parseTab,
+  routeQueryString,
+  setTab,
+  goToCompare,
+  refreshWorkspace,
+  csvExportStatus,
+  exportRecordsCsv,
+  loadProjects,
+  loadWorkspace,
+  hydrateSelectionFromRoute,
+  openRecord,
+  applyRecordFlags,
+  toggleRecordStar,
+  saveRecordNote,
+  closeRecordDetail,
+  toggleRecord,
+  openProject,
+  closeProject,
+  toggleProject,
+  openProjectRecord,
+  openIssue,
+  closeIssueDetail,
+  toggleIssue,
+  copyPipelineId,
+  copySelectedPipelineId,
+  copyMarkdownCommand,
+  loadDetailAiCoach,
+  cancelSelectedRecord,
+  deletePipeline,
+  deleteSelectedPipelines,
+  openSelectedInCompare,
+  openIssueRecord,
+  jumpIssueToCompare,
+  recordLead,
+  failedRecordMeta,
+  statusText,
+  statusTone,
+  errorTypeText,
+  stageText,
+  confidenceText,
+  scoreText,
+  formatDate,
+} = page;
 </script>
 
 <style scoped>
@@ -1083,6 +491,10 @@ onMounted(async () => {
 
 .records-head {
   gap: 18px;
+}
+
+.records-head .page-head-row {
+  align-items: start;
 }
 
 .records-kpi-row {
@@ -1118,37 +530,18 @@ onMounted(async () => {
   border-color: rgba(226, 109, 61, 0.18);
 }
 
-.export-center {
-  display: grid;
-  gap: 12px;
-  padding: 14px 16px;
-  border-radius: 16px;
-  border: 1px solid rgba(15, 23, 42, 0.08);
-  background:
-    radial-gradient(circle at top right, rgba(15, 143, 179, 0.1), transparent 28%),
-    rgba(255, 255, 255, 0.82);
-}
-
-.export-center > div:first-child {
-  display: grid;
-  gap: 4px;
-}
-
-.export-center strong {
-  font-family: var(--font-display);
-  font-size: 1.05rem;
-}
-
 .export-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 8px;
+  justify-content: flex-end;
 }
 
 .export-command {
   display: block;
-  padding: 10px 12px;
-  border-radius: 12px;
+  grid-column: 1 / -1;
+  padding: 8px 10px;
+  border-radius: 10px;
   border: 1px solid rgba(15, 23, 42, 0.08);
   background: rgba(15, 23, 42, 0.05);
   color: var(--text);
@@ -1157,30 +550,81 @@ onMounted(async () => {
 }
 
 .records-toolbar {
-  gap: 16px;
+  position: sticky;
+  top: 12px;
+  z-index: 8;
+  gap: 12px;
+  padding: 14px;
+  border-color: rgba(15, 23, 42, 0.1);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.94) 0%, rgba(248, 250, 252, 0.92) 100%);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.08);
+}
+
+.records-toolbar-main,
+.records-export-strip {
+  display: grid;
+  gap: 12px;
+}
+
+.records-toolbar-main {
+  grid-template-columns: minmax(0, 1.15fr) minmax(420px, 0.85fr);
+  align-items: end;
+}
+
+.records-export-strip {
+  grid-template-columns: minmax(160px, 0.55fr) minmax(0, 1.45fr);
+  align-items: center;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  background: rgba(248, 250, 252, 0.76);
+}
+
+.records-export-strip > div:first-child {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.records-export-strip strong {
+  font-family: var(--font-display);
+  font-size: 0.96rem;
 }
 
 .tab-row {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 4px;
+  padding: 4px;
+  border-radius: 12px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: rgba(226, 232, 240, 0.58);
 }
 
 .tab-chip {
-  min-width: 100px;
+  min-width: 0;
+  min-height: 36px;
+  padding: 0 10px;
+  border-radius: 8px;
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+  font-size: 0.84rem;
 }
 
 .tab-chip.active {
-  background: linear-gradient(135deg, var(--accent) 0%, #eb8d56 100%);
-  color: #fff;
+  background: #fff;
+  color: var(--accent-dark);
   border-color: transparent;
-  box-shadow: 0 8px 18px rgba(226, 109, 61, 0.18);
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.1);
 }
 
 .records-toolbar-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(180px, 0.8fr) 120px;
-  gap: 12px;
+  grid-template-columns: minmax(180px, 1fr) minmax(150px, 0.62fr) 96px;
+  gap: 10px;
   align-items: end;
 }
 
@@ -1191,26 +635,31 @@ onMounted(async () => {
 .counter-value {
   display: flex;
   align-items: center;
-  min-height: 48px;
-  padding: 0 14px;
-  border-radius: 12px;
+  min-height: 44px;
+  padding: 0 12px;
+  border-radius: 10px;
   border: 1px solid rgba(15, 23, 42, 0.08);
   background: rgba(255, 255, 255, 0.95);
   font-weight: 700;
 }
 
 .records-workspace {
-  gap: 10px;
+  gap: 8px;
+  padding: 0 0 14px;
+  overflow: hidden;
 }
 
 .records-table-head {
   display: grid;
-  grid-template-columns: 36px minmax(0, 1.7fr) 160px 180px 220px;
-  gap: 12px;
-  padding: 0 14px 8px;
+  grid-template-columns: 32px 36px minmax(0, 1.7fr) 150px 150px 200px;
+  gap: 10px;
+  align-items: center;
+  min-height: 42px;
+  padding: 0 12px;
   border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+  background: rgba(248, 250, 252, 0.88);
   color: var(--muted);
-  font-size: 0.78rem;
+  font-size: 0.74rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
@@ -1255,23 +704,26 @@ onMounted(async () => {
 }
 
 .dense-list {
-  gap: 10px;
+  gap: 0;
+  padding: 0 10px 10px;
 }
 
 .record-row-wrap {
   display: grid;
-  grid-template-columns: 36px 42px minmax(0, 1fr);
-  gap: 10px;
+  grid-template-columns: 32px 36px minmax(0, 1fr);
+  gap: 0;
   align-items: stretch;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.06);
 }
 
 .row-check {
   display: grid;
   place-items: center;
   min-height: 100%;
-  border-radius: 14px;
-  border: 1px solid rgba(15, 23, 42, 0.08);
-  background: rgba(255, 255, 255, 0.76);
+  border-radius: 0;
+  border: 0;
+  border-right: 1px solid rgba(15, 23, 42, 0.06);
+  background: rgba(248, 250, 252, 0.62);
   cursor: pointer;
 }
 
@@ -1289,9 +741,10 @@ onMounted(async () => {
   display: grid;
   place-items: center;
   min-height: 100%;
-  border-radius: 14px;
-  border: 1px solid rgba(15, 23, 42, 0.08);
-  background: rgba(255, 255, 255, 0.76);
+  border-radius: 0;
+  border: 0;
+  border-right: 1px solid rgba(15, 23, 42, 0.06);
+  background: rgba(248, 250, 252, 0.62);
   color: rgba(100, 116, 139, 0.92);
   box-shadow: none;
   font-size: 1.08rem;
@@ -1307,35 +760,34 @@ onMounted(async () => {
 
 .dense-row {
   display: grid;
-  grid-template-columns: minmax(0, 1.7fr) 160px 180px 220px;
-  gap: 12px;
+  grid-template-columns: minmax(0, 1.7fr) 150px 150px 200px;
+  gap: 10px;
   align-items: center;
   width: 100%;
-  padding: 14px;
-  border-radius: 14px;
-  border: 1px solid rgba(15, 23, 42, 0.08);
-  background: rgba(255, 255, 255, 0.98);
+  min-height: 68px;
+  padding: 12px 14px;
+  border-radius: 0;
+  border: 0;
+  background: rgba(255, 255, 255, 0.94);
   color: var(--text);
   text-align: left;
   box-shadow: none;
 }
 
 .dense-row:hover:not(:disabled) {
-  transform: translateY(-1px);
-  border-color: rgba(15, 143, 179, 0.22);
-  box-shadow: 0 10px 20px rgba(15, 23, 42, 0.04);
+  background: rgba(248, 252, 255, 0.98);
+  box-shadow: inset 0 0 0 1px rgba(15, 143, 179, 0.12);
 }
 
 .dense-row.active {
-  border-color: rgba(15, 143, 179, 0.32);
+  box-shadow: inset 4px 0 0 var(--accent);
   background:
-    radial-gradient(circle at top right, rgba(15, 143, 179, 0.1), transparent 32%),
-    linear-gradient(180deg, rgba(248, 252, 255, 0.98) 0%, rgba(255, 255, 255, 0.98) 100%);
+    linear-gradient(90deg, rgba(232, 247, 252, 0.98) 0%, rgba(255, 255, 255, 0.98) 100%);
 }
 
 .dense-col {
   display: grid;
-  gap: 4px;
+  gap: 3px;
   min-width: 0;
 }
 
@@ -1356,6 +808,12 @@ onMounted(async () => {
   font-variant-numeric: tabular-nums;
 }
 
+.record-detail-slot {
+  margin: 12px 0 16px 68px;
+  border-radius: 18px;
+  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.1);
+}
+
 .danger-button {
   color: #b42318;
   border-color: rgba(180, 35, 24, 0.22);
@@ -1368,7 +826,8 @@ onMounted(async () => {
 
 .project-list {
   display: grid;
-  gap: 10px;
+  gap: 0;
+  padding: 0 10px 10px;
 }
 
 .project-card {
@@ -1382,26 +841,25 @@ onMounted(async () => {
   gap: 12px;
   align-items: center;
   width: 100%;
-  padding: 14px;
-  border-radius: 14px;
-  border: 1px solid rgba(15, 23, 42, 0.08);
-  background: rgba(255, 255, 255, 0.98);
+  min-height: 70px;
+  padding: 12px 14px;
+  border-radius: 0;
+  border: 0;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+  background: rgba(255, 255, 255, 0.94);
   color: var(--text);
   text-align: left;
   box-shadow: none;
 }
 
 .project-row:hover:not(:disabled) {
-  transform: translateY(-1px);
-  border-color: rgba(15, 143, 179, 0.22);
-  box-shadow: 0 10px 20px rgba(15, 23, 42, 0.04);
+  background: rgba(248, 252, 255, 0.98);
+  box-shadow: inset 0 0 0 1px rgba(15, 143, 179, 0.12);
 }
 
 .project-row.active {
-  border-color: rgba(15, 143, 179, 0.32);
-  background:
-    radial-gradient(circle at top right, rgba(15, 143, 179, 0.1), transparent 32%),
-    linear-gradient(180deg, rgba(248, 252, 255, 0.98) 0%, rgba(255, 255, 255, 0.98) 100%);
+  box-shadow: inset 4px 0 0 var(--accent);
+  background: linear-gradient(90deg, rgba(232, 247, 252, 0.98) 0%, rgba(255, 255, 255, 0.98) 100%);
 }
 
 .project-main,
@@ -1452,6 +910,8 @@ onMounted(async () => {
 
 @media (max-width: 1180px) {
   .records-kpi-row,
+  .records-toolbar-main,
+  .records-export-strip,
   .records-toolbar-grid,
   .records-table-head,
   .dense-row,
@@ -1464,9 +924,27 @@ onMounted(async () => {
     grid-template-columns: 32px 38px minmax(0, 1fr);
   }
 
+  .record-detail-slot {
+    margin-left: 0;
+  }
+
+  .tab-row {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
   .bulk-action-bar {
     align-items: stretch;
     flex-direction: column;
+  }
+}
+
+@media (max-width: 720px) {
+  .tab-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .export-actions {
+    justify-content: flex-start;
   }
 }
 </style>

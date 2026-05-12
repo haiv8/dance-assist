@@ -1,10 +1,12 @@
 import { ref, type Ref } from "vue";
+import { appConfig } from "../config/appConfig";
 import { cancelPipeline, deletePipelineTask } from "../api/pipelines";
+import { isRunningPipelineStatus } from "../services/pipelineStatus";
 import { friendlyError, runningTaskDeleteMessage } from "../utils/errors";
 import type { PipelineStatusResponse, RecordWorkspaceItem } from "../types/video";
 
 export function isRunningTaskStatus(status?: string | null) {
-  return status === "pending" || status === "running";
+  return isRunningPipelineStatus(status);
 }
 
 export function useRecordActions(records: Ref<RecordWorkspaceItem[]>) {
@@ -25,7 +27,7 @@ export function useRecordActions(records: Ref<RecordWorkspaceItem[]>) {
       copyingId.value = pipelineId;
       window.setTimeout(() => {
         if (copyingId.value === pipelineId) copyingId.value = "";
-      }, 1400);
+      }, appConfig.clipboardResetMs);
     } catch {
       actionError.value = "复制失败，请手动复制任务 ID。";
     }

@@ -17,7 +17,7 @@ export function useAiCoach() {
 
   const aiCoachFallbackHint = computed(() => {
     if (aiCoach.value?.generated_by !== "local_fallback") return "";
-    return "当前展示的是基于分析报告的本地规则建议；云端 AI 不可用时，演示复盘仍可继续。";
+    return "状态：云端 AI 不可用。操作：使用本地规则建议。反馈：复盘仍可继续。";
   });
 
   function clearAiCoach() {

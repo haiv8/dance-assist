@@ -1,7 +1,10 @@
 <template>
   <div class="list-item-card ai-record-card" v-if="aiCoach || aiCoachError">
     <div class="record-card-head">
-      <strong>AI 助教解读</strong>
+      <div class="record-title-row">
+        <strong>AI 助教解读</strong>
+        <InfoHint text="AI 只读取当前报告生成建议，不会改写评分或报告数据。" />
+      </div>
       <span v-if="aiCoach" class="tag neutral">{{ sourceText }}</span>
     </div>
     <span v-if="aiCoachError" class="helper-text">{{ aiCoachError }}</span>
@@ -18,16 +21,16 @@
         </button>
       </div>
       <span class="helper-text" v-if="aiCoach.practice_plan[0]">
-        建议先练：{{ aiCoach.practice_plan[0].title }}，{{ aiCoach.practice_plan[0].duration_min }} 分钟。
+        建议先练 {{ aiCoach.practice_plan[0].title }}，约 {{ aiCoach.practice_plan[0].duration_min }} 分钟。
       </span>
       <span class="helper-text" v-if="fallbackHint">{{ fallbackHint }}</span>
       <span class="helper-text" v-if="aiCoach.setup_hint">{{ aiCoach.setup_hint }}</span>
-      <span class="helper-text">AI 解读基于已生成的分析报告，不参与动作评分。</span>
     </template>
   </div>
 </template>
 
 <script setup lang="ts">
+import InfoHint from "../InfoHint.vue";
 import type { AiCoachResponse } from "../../types/video";
 
 defineProps<{
@@ -51,6 +54,12 @@ defineProps<{
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+}
+
+.record-title-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .issue-chip-list {

@@ -34,7 +34,7 @@
       <div class="panel-head compact-head">
         <div>
           <h2>问题回放</h2>
-          <p class="helper-text">这里保留最短路径操作，方便马上回到所属记录或动作分析页。</p>
+          <p class="helper-text">打开记录，或回到对应时间点。</p>
         </div>
         <div class="action-row">
           <button class="secondary-button" type="button" @click="$emit('openRecord', item)">打开所属记录</button>
@@ -53,8 +53,8 @@
 
       <div class="list-item-card">
         <strong>所属记录评分</strong>
-        <span class="helper-text">当前记录总分：{{ scoreText(item.scoreTotal) }}；可信度：{{ confidenceLevelText(item.confidenceScore) }}（{{ confidenceText(item.confidenceScore) }}）。</span>
-        <span class="helper-text" v-if="isLowConfidence(item.confidenceScore)">该片段可能受跟踪质量影响，建议结合视频回看判断。</span>
+        <span class="helper-text">总分 {{ scoreText(item.scoreTotal) }}，可信度 {{ confidenceLevelText(item.confidenceScore) }}（{{ confidenceText(item.confidenceScore) }}）。</span>
+        <span class="helper-text" v-if="isLowConfidence(item.confidenceScore)">可信度偏低，先回看原视频。</span>
       </div>
 
       <div class="list-item-card">
@@ -142,23 +142,25 @@ function formatDate(value?: string | null) {
 .record-shell,
 .inline-detail {
   display: grid;
-  gap: 14px;
+  gap: 0;
 }
 
 .record-row-wrap {
   display: grid;
-  grid-template-columns: 36px minmax(0, 1fr);
-  gap: 10px;
+  grid-template-columns: 32px minmax(0, 1fr);
+  gap: 0;
   align-items: stretch;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.06);
 }
 
 .row-check {
   display: grid;
   place-items: center;
   min-height: 100%;
-  border-radius: 14px;
-  border: 1px solid rgba(15, 23, 42, 0.08);
-  background: rgba(255, 255, 255, 0.76);
+  border-radius: 0;
+  border: 0;
+  border-right: 1px solid rgba(15, 23, 42, 0.06);
+  background: rgba(248, 250, 252, 0.62);
   cursor: pointer;
 }
 
@@ -183,29 +185,28 @@ function formatDate(value?: string | null) {
 .dense-row {
   display: grid;
   grid-template-columns: minmax(0, 1.8fr) 140px 120px 220px;
-  gap: 12px;
+  gap: 10px;
   align-items: center;
   width: 100%;
-  padding: 14px;
-  border-radius: 14px;
-  border: 1px solid rgba(15, 23, 42, 0.08);
-  background: rgba(255, 255, 255, 0.98);
+  min-height: 68px;
+  padding: 12px 14px;
+  border-radius: 0;
+  border: 0;
+  background: rgba(255, 255, 255, 0.94);
   color: var(--text);
   text-align: left;
   box-shadow: none;
 }
 
 .dense-row:hover:not(:disabled) {
-  transform: translateY(-1px);
-  border-color: rgba(15, 143, 179, 0.22);
-  box-shadow: 0 10px 20px rgba(15, 23, 42, 0.04);
+  background: rgba(248, 252, 255, 0.98);
+  box-shadow: inset 0 0 0 1px rgba(15, 143, 179, 0.12);
 }
 
 .dense-row.active {
-  border-color: rgba(15, 143, 179, 0.32);
+  box-shadow: inset 4px 0 0 var(--accent);
   background:
-    radial-gradient(circle at top right, rgba(15, 143, 179, 0.1), transparent 32%),
-    linear-gradient(180deg, rgba(248, 252, 255, 0.98) 0%, rgba(255, 255, 255, 0.98) 100%);
+    linear-gradient(90deg, rgba(232, 247, 252, 0.98) 0%, rgba(255, 255, 255, 0.98) 100%);
 }
 
 .dense-col {
@@ -232,11 +233,12 @@ function formatDate(value?: string | null) {
 }
 
 .inline-detail {
-  padding: 18px 20px 20px;
-  border-radius: 18px;
-  border: 1px solid rgba(15, 23, 42, 0.08);
+  margin: 12px 0 16px 40px;
+  padding: 18px;
+  border-radius: 16px;
+  border: 1px solid rgba(15, 143, 179, 0.14);
   background: linear-gradient(180deg, rgba(248, 250, 252, 0.98) 0%, rgba(255, 255, 255, 0.98) 100%);
-  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.04);
+  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.1);
 }
 
 .compact-stats {

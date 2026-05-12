@@ -1,14 +1,12 @@
-﻿import axios from "axios";
-
-const API_BASE = "http://127.0.0.1:8000";
+import axios from "axios";
+import { appConfig, buildApiUrl } from "../config/appConfig";
 
 export const http = axios.create({
-  baseURL: API_BASE,
+  baseURL: appConfig.apiBaseUrl,
   timeout: 30_000,
 });
 
 export function absMediaUrl(url: string): string {
   if (!url) return "";
-  if (url.startsWith("http://") || url.startsWith("https://")) return url;
-  return `${API_BASE}${url}`;
+  return buildApiUrl(url);
 }

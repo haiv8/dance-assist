@@ -3,8 +3,8 @@
     <section class="surface-card page-head settings-head">
       <div class="page-head-row">
         <div>
-          <h1>系统设置 <InfoHint text="把运行状态、存储占用和维护动作收在一个巡检工作台里，方便长期本地使用时快速定位问题。" /></h1>
-          <p class="page-subtitle">把运行状态、存储占用和维护动作收在一个巡检工作台里，方便长期本地使用时快速定位问题。</p>
+          <h1>系统设置 <InfoHint text="刷新环境巡检结果，跳转对应工作区，并执行数据维护动作。" /></h1>
+          <p class="page-subtitle">检查环境，处理异常。</p>
         </div>
         <div class="action-row">
           <button class="secondary-button" :disabled="loading" @click="refreshStatus">
@@ -37,15 +37,15 @@
       <article class="surface-card health-hero" :data-tone="healthTone">
         <div class="panel-head compact-head">
           <div>
-            <h2>运行概览 <InfoHint text="先看是否健康、下一个建议动作是什么，再决定是否要跳去记录页或执行维护。" /></h2>
-            <p class="helper-text">先看是否健康、下一个建议动作是什么，再决定是否要跳去记录页或执行维护。</p>
+            <h2>运行概览 <InfoHint text="汇总健康状态，并把最需要处理的动作放在前面。" /></h2>
+            <p class="helper-text">查看当前运行风险。</p>
           </div>
         </div>
 
         <div v-if="error" class="feedback-inline">{{ error }}</div>
         <div v-else-if="loading && !status" class="feedback-state" data-tone="loading">
           <strong class="feedback-state-title">状态加载中</strong>
-          <span class="feedback-state-copy">正在读取本地环境信息，请稍候。</span>
+          <span class="feedback-state-copy">正在检查本地环境...</span>
         </div>
         <template v-else>
           <div class="hero-main">
@@ -79,8 +79,8 @@
       <article class="surface-card settings-shortcuts-card">
         <div class="panel-head compact-head">
           <div>
-            <h2>快捷入口 <InfoHint text="发现异常后，直接跳去最相关的工作区处理，不用来回切菜单。" /></h2>
-            <p class="helper-text">发现异常后，直接跳去最相关的工作区处理，不用来回切菜单。</p>
+            <h2>快捷入口 <InfoHint text="根据当前风险快速跳转到记录、已完成报告或新分析流程。" /></h2>
+            <p class="helper-text">跳转到对应工作区。</p>
           </div>
         </div>
 
@@ -105,8 +105,8 @@
       <article class="surface-card">
         <div class="panel-head compact-head">
           <div>
-            <h2>环境检查 <InfoHint text="直接看关键依赖是否在线，包括运行目录、磁盘、模型、数据库和队列服务。" /></h2>
-            <p class="helper-text">直接看关键依赖是否在线，包括运行目录、磁盘、模型、数据库和队列服务。</p>
+            <h2>环境检查 <InfoHint text="检查后端、模型、ffmpeg、磁盘、Redis、PostgreSQL 和 AI provider 状态。" /></h2>
+            <p class="helper-text">查看依赖是否可用。</p>
           </div>
         </div>
 
@@ -130,14 +130,14 @@
       <article class="surface-card">
         <div class="panel-head compact-head">
           <div>
-            <h2>异常提示 <InfoHint text="把原始检查结果翻译成更直接的风险说明和处理建议。" /></h2>
-            <p class="helper-text">把原始检查结果翻译成更直接的风险说明和处理建议。</p>
+            <h2>异常提示 <InfoHint text="把关键风险翻译成可执行动作，优先处理影响分析稳定性的项目。" /></h2>
+            <p class="helper-text">优先处理高风险项。</p>
           </div>
         </div>
 
         <div v-if="!insightItems.length" class="feedback-state" data-tone="empty">
           <strong class="feedback-state-title">当前没有高优先级异常</strong>
-          <span class="feedback-state-copy">主要服务和数据目录状态稳定，可以继续使用。</span>
+          <span class="feedback-state-copy">可以继续使用。</span>
         </div>
         <div v-else class="settings-card-grid">
           <div
@@ -161,8 +161,8 @@
       <article class="surface-card">
         <div class="panel-head compact-head">
           <div>
-            <h2>数据占用 <InfoHint text="重点关注上传目录、输出目录和关键点缓存，避免长期使用后体积失控。" /></h2>
-            <p class="helper-text">重点关注上传目录、输出目录和关键点缓存，避免长期使用后体积失控。</p>
+            <h2>数据占用 <InfoHint text="查看上传、输出、缓存、模型和运行目录占用，判断是否需要清理。" /></h2>
+            <p class="helper-text">查看主要目录占用。</p>
           </div>
         </div>
 
@@ -178,8 +178,8 @@
       <article class="surface-card">
         <div class="panel-head compact-head">
           <div>
-            <h2>运行路径 <InfoHint text="这些目录决定了素材、输出和模型实际落在哪里，排查问题时最常用。" /></h2>
-            <p class="helper-text">这些目录决定了素材、输出和模型实际落在哪里，排查问题时最常用。</p>
+            <h2>运行路径 <InfoHint text="核对上传、输出、数据、模型和运行根目录路径。" /></h2>
+            <p class="helper-text">核对本地目录。</p>
           </div>
         </div>
 
@@ -195,15 +195,15 @@
     <section class="surface-card">
       <div class="panel-head compact-head">
         <div>
-          <h2>数据维护 <InfoHint text="把最高频的维护动作保留在这里，适合定期瘦身、修复历史报告和清理调试产物。" /></h2>
-          <p class="helper-text">把最高频的维护动作保留在这里，适合定期瘦身、修复历史报告和清理调试产物。</p>
+          <h2>数据维护 <InfoHint text="重建历史报告、裁剪旧输出或清理调试产物，减少演示前的不稳定因素。" /></h2>
+          <p class="helper-text">修复报告并释放空间。</p>
         </div>
       </div>
 
       <div class="settings-maintenance-grid">
         <div class="list-item-card settings-maintenance-card">
-          <strong>重建历史报告 <InfoHint text="重新扫描已落盘的分析结果，修复报告表里的分数、可信度和摘要信息。" /></strong>
-          <span class="helper-text">重新扫描已落盘的分析结果，修复报告表里的分数、可信度和摘要信息。</span>
+          <strong>重建历史报告 <InfoHint text="重新扫描输出目录，补齐历史报告的分数、摘要和索引。" /></strong>
+          <span class="helper-text">补齐历史摘要。</span>
           <div class="settings-maintenance-foot">
             <span class="field-help">{{ rebuildHint }}</span>
             <button :disabled="actionLoading" @click="runRebuildReports">
@@ -213,8 +213,8 @@
         </div>
 
         <div class="list-item-card settings-maintenance-card">
-          <strong>裁剪旧输出 <InfoHint text="只保留最近若干组分析输出，用来控制 outputs 目录的长期增长。" /></strong>
-          <span class="helper-text">只保留最近若干组分析输出，用来控制 <code>outputs</code> 目录的长期增长。</span>
+          <strong>裁剪旧输出 <InfoHint text="按保留组数删除较旧输出，释放本地空间。" /></strong>
+          <span class="helper-text">释放历史空间。</span>
           <div class="settings-inline-field">
             <label class="field-label">保留组数</label>
             <input v-model.number="keepPairs" type="number" min="1" max="50" step="1" />
@@ -228,8 +228,8 @@
         </div>
 
         <div class="list-item-card settings-maintenance-card">
-          <strong>清理调试产物 <InfoHint text="删除调试目录和辅助图表，保留报告、时间轴和骨架视频等主要结果。" /></strong>
-          <span class="helper-text">删除调试目录和辅助图表，保留报告、时间轴和骨架视频等主要结果。</span>
+          <strong>清理调试产物 <InfoHint text="清理辅助调试文件，保留主要分析结果。" /></strong>
+          <span class="helper-text">保留主要输出。</span>
           <div class="settings-maintenance-foot">
             <span class="field-help">{{ cleanupHint }}</span>
             <button :disabled="actionLoading" @click="runCleanupDebug">
@@ -316,9 +316,9 @@ const freedSpaceLabel = "释放空间：";
 const reportCountLabel = "报告记录数：";
 const loadErrorText = "系统状态加载失败";
 const maintenanceErrorText = "维护动作执行失败";
-const rebuildHint = "适合在补入新字段或修复旧报告后执行。";
-const trimHint = "建议先保留 5 到 10 组，在可回看性和空间占用之间做平衡。";
-const cleanupHint = "适合在长时间调试后执行，不会碰主要输出文件。";
+const rebuildHint = "补齐历史摘要。";
+const trimHint = "建议保留 5 到 10 组。";
+const cleanupHint = "清理辅助文件。";
 const checkedAtFallback = "尚未记录";
 
 const status = ref<SystemStatusResponse | null>(null);
@@ -501,15 +501,15 @@ const headlineTitle = computed(() => {
 
 const headlineSummary = computed(() => {
   if (healthTone.value === "ok") {
-    return "主要服务和数据目录状态稳定，可以继续进行分析和历史结果管理。";
+    return "环境稳定，可以继续分析或管理记录。";
   }
   if (healthTone.value === "danger") {
-    return "检测到会影响执行或持久化的关键问题，建议先处理再继续长时间使用。";
+    return "存在关键问题，优先修复异常项。";
   }
-  return "系统还能继续工作，但最好先把风险项清掉，避免后续任务堆积。";
+  return "环境可用，但建议先清理警告项。";
 });
 
-const headlineAction = computed(() => insightItems.value[0]?.action || "保持当前配置，并定期裁剪旧输出。");
+const headlineAction = computed(() => insightItems.value[0]?.action || "定期裁剪旧输出，保持空间可控。");
 
 const checkedAtText = computed(() => {
   const value = status.value?.checked_at;
@@ -520,15 +520,15 @@ const checkedAtText = computed(() => {
 });
 
 const tasksShortcutCopy = computed(() =>
-  urgentCount.value > 0 ? "优先查看失败或卡住的记录，确认问题是否已经影响任务执行。" : "集中查看全部记录、失败任务和异常输出。"
+  urgentCount.value > 0 ? "查看失败任务和影响范围。" : "集中查看失败和输出。"
 );
 
 const reportsShortcutCopy = computed(() =>
-  warnCount.value > 0 ? "重点复核最新完成记录，确认报告摘要和产物是否正常生成。" : "快速回看最近完成的分析结果和报告质量。"
+  warnCount.value > 0 ? "复核已完成记录。" : "回看已完成报告。"
 );
 
 const compareShortcutCopy = computed(() =>
-  healthTone.value === "ok" ? "环境状态稳定，可以继续发起新的动作分析。" : "处理完关键异常后，再继续提交新的分析任务更稳妥。"
+  healthTone.value === "ok" ? "发起新的分析任务。" : "先处理关键项再提交任务。"
 );
 
 const storageItems = computed<StorageItem[]>(() => {

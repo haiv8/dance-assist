@@ -1,11 +1,12 @@
 <template>
   <div class="inline-detail">
-    <div class="panel-head compact-head">
+    <div class="panel-head compact-head detail-panel-head">
       <div>
+        <span class="detail-eyebrow">{{ item.pair_name || item.pipeline_id }}</span>
         <h2>记录详情</h2>
-        <p class="helper-text">主要动作信息集中在这里，避免为同一条记录切换多个菜单。</p>
+        <p class="helper-text">取消、删除、导出或继续复盘。</p>
       </div>
-      <div class="action-row">
+      <div class="action-row detail-actions">
         <button class="ghost-button" :disabled="!canCancel || canceling" @click="$emit('cancel')">
           {{ canceling ? "取消中..." : "取消任务" }}
         </button>
@@ -35,6 +36,21 @@
     <div v-else-if="detail" class="detail-stack">
       <ConfidenceBanner :confidence-score="detail.report?.confidence?.score ?? detail.confidence_score" />
 
+      <div class="detail-hero-line">
+        <div>
+          <span>当前记录</span>
+          <strong>{{ item.pair_name || item.pipeline_id }}</strong>
+        </div>
+        <div>
+          <span>问题片段</span>
+          <strong>{{ issues.length }}</strong>
+        </div>
+        <div>
+          <span>最近状态</span>
+          <strong>{{ statusText(detail.status) }}</strong>
+        </div>
+      </div>
+
       <div v-if="detail.status === 'failed'" class="list-item-card failure-reason-card">
         <div class="task-item-head">
           <strong>失败原因</strong>
@@ -42,8 +58,8 @@
         </div>
         <div class="failure-detail-grid">
           <span class="helper-text">错误类型：{{ detail.error_type || "未标记" }}</span>
-          <span class="helper-text">用户可读原因：{{ failureMessage }}</span>
-          <span class="helper-text failure-suggestion">修复建议：{{ failureSuggestion }}</span>
+          <span class="helper-text">原因：{{ failureMessage }}</span>
+          <span class="helper-text failure-suggestion">建议：{{ failureSuggestion }}</span>
         </div>
         <details v-if="detail.raw_error" class="raw-error-details">
           <summary>查看开发调试信息</summary>
@@ -56,7 +72,7 @@
           <strong>输入质量</strong>
           <span class="tag" :class="inputQualityTone">{{ inputQualityLevelText }}</span>
         </div>
-        <span class="helper-text">{{ inputQuality.summary || "本次分析已记录输入视频质量信息。" }}</span>
+        <span class="helper-text">{{ inputQuality.summary || "已记录输入质量。" }}</span>
         <div class="input-quality-grid">
           <div class="metric-chip">
             <strong>教师视频</strong>
@@ -72,19 +88,13 @@
         </ul>
       </div>
 
-      <div class="metric-row compact-stats">
+      <div class="detail-metric-board">
         <div class="metric-chip"><strong>状态</strong><span>{{ statusText(detail.status) }}</span></div>
         <div class="metric-chip"><strong>阶段</strong><span>{{ stageText(detail.stage, detail.status) }}</span></div>
         <div class="metric-chip"><strong>进度</strong><span>{{ progressPercent(detail.progress) }}%</span></div>
-      </div>
-
-      <div class="metric-row compact-stats">
         <div class="metric-chip"><strong>总分</strong><span>{{ scoreText(detail.report?.score_0_100 ?? detail.report?.scores?.score_total ?? detail.score_total) }}</span></div>
         <div class="metric-chip"><strong>动作</strong><span>{{ scoreText(detail.report?.scores?.score_pose ?? detail.score_pose) }}</span></div>
         <div class="metric-chip"><strong>节奏</strong><span>{{ scoreText(detail.report?.scores?.score_tempo ?? detail.score_tempo) }}</span></div>
-      </div>
-
-      <div class="metric-row compact-stats">
         <div class="metric-chip"><strong>可信度</strong><span>{{ detailConfidenceText }}</span></div>
         <div class="metric-chip"><strong>开始时间</strong><span>{{ formatDate(detail.started_at || detail.queued_at) }}</span></div>
         <div class="metric-chip"><strong>完成时间</strong><span>{{ formatDate(detail.finished_at || detail.updated_at) }}</span></div>
@@ -105,7 +115,7 @@
           @input="$emit('updateNoteDraft', ($event.target as HTMLTextAreaElement).value)"
         />
         <div class="settings-maintenance-foot">
-          <span class="helper-text">{{ item.flag_updated_at ? `上次保存：${formatDate(item.flag_updated_at)}` : "备注会保存在本地 record_flags.json，不修改原始报告。" }}</span>
+          <span class="helper-text">{{ item.flag_updated_at ? `上次保存 ${formatDate(item.flag_updated_at)}` : "填写后保存为本地标记。" }}</span>
           <button type="button" :disabled="flagSaving" @click="$emit('saveNote')">
             {{ flagSaving ? "保存中..." : "保存备注" }}
           </button>
@@ -186,6 +196,7 @@ import { computed } from "vue";
 import { absMediaUrl } from "../../api/http";
 import { normalizedConfidenceSummary } from "../../utils/confidence";
 import { confidenceLevelText } from "../../composables/useScoreExplanation";
+import { pipelineStageText, pipelineStatusText } from "../../services/pipelineStatus";
 import AiCoachCard from "./AiCoachCard.vue";
 import ConfidenceBanner from "./ConfidenceBanner.vue";
 import PriorityReviewList from "./PriorityReviewList.vue";
@@ -302,12 +313,7 @@ function progressPercent(progress?: number | null) {
 }
 
 function statusText(status?: string | null) {
-  if (status === "pending") return "等待中";
-  if (status === "running") return "分析中";
-  if (status === "done") return "已完成";
-  if (status === "failed") return "失败";
-  if (status === "canceled") return "已取消";
-  return status || "未知";
+  return pipelineStatusText(status);
 }
 
 function errorTypeText(value?: string | null) {
@@ -334,23 +340,14 @@ function fallbackFailureSuggestion(value?: string | null) {
     model_missing: "请检查 models/pose_landmarker_full.task 是否存在。",
     low_quality_input: "请改善拍摄角度、全身入镜、光照和遮挡情况后再试。",
     pipeline_internal_error: "请保留任务 ID 和调试信息，重试后仍失败再检查后端日志。",
-    canceled: "任务已被取消，如需结果请重新发起分析。",
+    canceled: "任务已取消，可重新发起分析。",
     timeout: "请尝试使用更短的视频，或检查本机资源占用后重新分析。",
   };
-  return value ? map[value] || "请根据错误类型检查输入视频和本地运行环境后重试。" : "请检查输入视频、模型文件和系统状态后重试。";
+  return value ? map[value] || "请检查输入视频和本地环境，修复后重试。" : "请检查视频、模型和系统状态，修复后重试。";
 }
 
 function stageText(stage?: string | null, status?: string | null) {
-  if (stage === "queued") return "已进入队列";
-  if (stage === "preparing_inputs") return "准备素材";
-  if (stage === "extracting_pose") return "提取骨架";
-  if (stage === "aligning_motion") return "动作对齐与评分";
-  if (stage === "rendering_outputs") return "生成对比输出";
-  if (stage === "packaging_results") return "整理结果";
-  if (stage === "completed") return "结果已就绪";
-  if (stage === "failed") return "任务失败";
-  if (stage === "canceled") return "任务已取消";
-  return statusText(status);
+  return pipelineStageText(stage, status);
 }
 
 function issueTypeText(value?: string) {
@@ -412,17 +409,74 @@ function formatDate(value?: string | null) {
 }
 
 .inline-detail {
-  padding: 18px 20px 20px;
-  border-radius: 18px;
-  border: 1px solid rgba(15, 23, 42, 0.08);
-  background: linear-gradient(180deg, rgba(248, 250, 252, 0.98) 0%, rgba(255, 255, 255, 0.98) 100%);
-  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.04);
+  padding: 18px;
+  border-radius: 16px;
+  border: 1px solid rgba(15, 143, 179, 0.22);
+  background:
+    linear-gradient(180deg, rgba(248, 252, 255, 0.99) 0%, rgba(255, 255, 255, 0.99) 100%);
+  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.1);
 }
 
-.compact-stats {
+.detail-panel-head {
+  padding-bottom: 14px;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+.detail-panel-head h2 {
+  margin-top: 2px;
+}
+
+.detail-eyebrow {
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  overflow-wrap: anywhere;
+}
+
+.detail-actions {
+  justify-content: flex-end;
+}
+
+.compact-stats,
+.detail-metric-board,
+.detail-hero-line {
   display: grid;
   gap: 10px;
   grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.detail-hero-line {
+  padding: 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(15, 143, 179, 0.12);
+  background:
+    linear-gradient(90deg, rgba(232, 247, 252, 0.92) 0%, rgba(255, 255, 255, 0.86) 100%);
+}
+
+.detail-hero-line > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.detail-hero-line span {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.detail-hero-line strong {
+  overflow-wrap: anywhere;
+}
+
+.detail-metric-board {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.detail-metric-board .metric-chip {
+  min-height: 74px;
 }
 
 .detail-columns {
@@ -560,6 +614,8 @@ function formatDate(value?: string | null) {
 
 @media (max-width: 1024px) {
   .compact-stats,
+  .detail-metric-board,
+  .detail-hero-line,
   .input-quality-grid,
   .issue-chip-list {
     grid-template-columns: 1fr;

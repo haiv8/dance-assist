@@ -36,10 +36,10 @@ const title = computed(() => {
 });
 
 const message = computed(() => {
-  if (tone.value === "good") return "本次分析可信度较高，可重点参考评分和问题片段。";
-  if (tone.value === "warning") return "本次分析可信度中等，整体趋势可参考，局部片段建议结合视频回看。";
-  if (tone.value === "danger") return "本次分析可信度较低，建议先检查拍摄角度、全身入镜、光照和遮挡情况。";
-  return "暂无可信度信息，请结合视频和问题片段判断。";
+  if (tone.value === "good") return "评分和问题片段可作为主要复盘依据。";
+  if (tone.value === "warning") return "建议结合视频回看局部片段。";
+  if (tone.value === "danger") return "先检查角度、入镜、光照和遮挡。";
+  return "结合视频和片段判断，避免单看分数。";
 });
 
 const icon = computed(() => {

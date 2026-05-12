@@ -36,7 +36,6 @@ const navItems: NavItem[] = [
     description: "报告与问题片段",
     topbarCopy: "查看历史报告、评分说明、问题片段和训练建议。",
     icon: "records",
-    aliases: ["/tasks", "/reports", "/issues"],
   },
   {
     to: "/settings",

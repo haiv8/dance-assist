@@ -3,8 +3,8 @@
     <section class="surface-card page-head compare-head">
       <div class="page-head-row">
         <div>
-          <h1>动作分析</h1>
-          <p class="page-subtitle">把这页收成一个主工作区：左边配置，右边对照舞台，下方结果与复盘。</p>
+          <h1>动作分析 <InfoHint text="选择教师示范和学员练习，发起分析后查看评分、问题片段和复盘建议。" /></h1>
+          <p class="page-subtitle">选择素材，开始一次复盘。</p>
         </div>
         <button class="secondary-button" :disabled="loading" @click="loadList">
           {{ loading ? "刷新中..." : "同步素材库" }}
@@ -31,158 +31,12 @@
       </div>
     </section>
 
-    <section class="surface-card workflow-stepper" aria-label="分析流程">
-      <article
-        v-for="step in workflowSteps"
-        :key="step.key"
-        class="workflow-step-item"
-        :class="step.state"
-      >
-        <span class="workflow-step-index">{{ step.index }}</span>
-        <div>
-          <strong>{{ step.title }}</strong>
-          <p>{{ step.copy }}</p>
-        </div>
-      </article>
-    </section>
-
     <section class="analysis-workbench">
-      <aside class="analysis-rail">
-        <article class="surface-card analysis-config-card">
-          <div class="panel-head compact-head">
-            <div>
-              <h2>分析配置</h2>
-              <p class="helper-text">先确认本轮对照素材，再发起分析任务。</p>
-            </div>
-          </div>
-
-          <div class="field-grid">
-            <div class="field-block">
-              <label class="field-label">教师视频</label>
-              <select v-model="teacherId">
-                <option value="">请选择教师示范视频</option>
-                <option v-for="item in teacherItems" :key="item.video_id" :value="item.video_id">
-                  {{ item.filename }}
-                </option>
-              </select>
-            </div>
-
-            <div class="field-block">
-              <label class="field-label">学员视频</label>
-              <select v-model="userId">
-                <option value="">请选择学员练习视频</option>
-                <option v-for="item in userItems" :key="item.video_id" :value="item.video_id">
-                  {{ item.filename }}
-                </option>
-              </select>
-            </div>
-          </div>
-
-          <EmptyState
-            v-if="!loading && (!teacherItems.length || !userItems.length)"
-            title="素材还不够"
-            copy="先去素材库上传一段教师示范视频和一段学员练习视频。"
-          >
-            <template #actions>
-              <RouterLink class="link-button secondary-button" to="/upload">去上传视频</RouterLink>
-            </template>
-          </EmptyState>
-
-          <EmptyState
-            v-else-if="!loading && (!teacherId || !userId)"
-            title="先从素材库选择教师和学员视频"
-            copy="两段视频都选好后，系统会先做质量检查，再允许发起分析。"
-          />
-
-          <label class="simple-check">
-            <input type="checkbox" v-model="overwrite" />
-            <span class="check-mark" aria-hidden="true"></span>
-            <span>覆盖历史结果</span>
-          </label>
-
-          <div v-if="teacherId && userId" class="quality-check-card" :data-level="qualityCheck?.level || 'checking'">
-            <div class="quality-check-head">
-              <div>
-                <span class="quality-check-eyebrow">视频质量检查</span>
-                <strong>{{ qualityCheckTitle }}</strong>
-              </div>
-              <span class="quality-badge">{{ qualityCheckBadge }}</span>
-            </div>
-
-            <div v-if="qualityCheckLoading" class="helper-text">正在读取视频时长、分辨率和帧率...</div>
-            <template v-else-if="qualityCheck">
-              <div class="quality-meta-grid">
-                <div>
-                  <span>教师视频</span>
-                  <strong>{{ formatQualityMeta(qualityCheck.teacher_meta) }}</strong>
-                </div>
-                <div>
-                  <span>学员视频</span>
-                  <strong>{{ formatQualityMeta(qualityCheck.user_meta) }}</strong>
-                </div>
-              </div>
-              <ul class="quality-recommendations">
-                <li v-for="item in qualityCheckRecommendations" :key="item">{{ item }}</li>
-              </ul>
-            </template>
-          </div>
-
-          <div class="action-row rail-actions">
-            <button :disabled="!canStartAnalysis" @click="startAnalysis">
-              {{ analyzing ? "分析进行中..." : "发起分析" }}
-            </button>
-            <button class="ghost-button" :disabled="!canCancelCurrentPipeline || cancelingPipeline" @click="cancelCurrentPipeline">
-              {{ cancelingPipeline ? "取消中..." : "取消当前任务" }}
-            </button>
-          </div>
-
-          <div v-if="error" class="feedback-inline">{{ error }}</div>
-        </article>
-
-        <article class="surface-card analysis-session-card">
-          <div class="panel-head compact-head">
-            <div>
-              <h2>当前组合</h2>
-              <p class="helper-text">这里保留本轮素材和任务摘要，避免视线来回跳。</p>
-            </div>
-          </div>
-
-          <div v-if="loading && !items.length" class="feedback-state" data-tone="loading">
-            <strong class="feedback-state-title">素材库同步中</strong>
-            <span class="feedback-state-copy">正在读取教师与学员素材，完成后会自动补齐默认组合。</span>
-          </div>
-
-          <div v-else class="summary-stack compact-summary">
-            <div class="summary-row">
-              <span>教师素材</span>
-              <strong>{{ selectedTeacherLabel }}</strong>
-            </div>
-            <div class="summary-row">
-              <span>学员素材</span>
-              <strong>{{ selectedUserLabel }}</strong>
-            </div>
-            <div class="summary-row">
-              <span>任务 ID</span>
-              <strong>{{ pipelineId || "尚未创建任务" }}</strong>
-            </div>
-          </div>
-
-          <div v-if="pipelineId" class="progress-card">
-            <div class="progress-head">
-              <strong>{{ pipelineStageText }}</strong>
-              <span>{{ pipelineProgressPercent }}%</span>
-            </div>
-            <div class="progress-track"><div class="progress-fill" :style="{ width: `${pipelineProgressPercent}%` }"></div></div>
-            <p class="helper-text progress-copy">{{ pipelineMessage || analysisHint }}</p>
-          </div>
-        </article>
-      </aside>
-
       <section class="surface-card analysis-stage-card">
         <div class="panel-head compact-head">
           <div>
-            <h2>对照舞台</h2>
-            <p class="helper-text">播放器和时间轴都收在同一块，方便边看边定位问题点。</p>
+            <h2>对照舞台 <InfoHint text="播放或跳转时间点时，两段视频会尽量同步；问题点会标在时间轴上。" /></h2>
+            <p class="helper-text">播放、暂停并定位问题点。</p>
           </div>
         </div>
 
@@ -210,7 +64,7 @@
               <div v-else class="empty-panel">
                 <div class="feedback-state" data-tone="empty">
                   <strong class="feedback-state-title">教师示范尚未就绪</strong>
-                  <span class="feedback-state-copy">先选择教师示范视频，左侧播放器才会进入对照状态。</span>
+                  <span class="feedback-state-copy">请选择教师示范素材。</span>
                 </div>
               </div>
             </div>
@@ -236,7 +90,7 @@
               <div v-else class="empty-panel">
                 <div class="feedback-state" data-tone="empty">
                   <strong class="feedback-state-title">学员练习尚未就绪</strong>
-                  <span class="feedback-state-copy">选择学员练习视频后，系统会自动准备双视频对照。</span>
+                  <span class="feedback-state-copy">请选择学员练习素材。</span>
                 </div>
               </div>
             </div>
@@ -276,13 +130,159 @@
           </div>
         </div>
       </section>
+
+      <aside class="analysis-rail">
+        <article class="surface-card analysis-config-card">
+          <div class="panel-head compact-head">
+            <div>
+              <h2>分析配置 <InfoHint text="选择两段视频后会自动完成质量检查，通过后即可发起分析。" /></h2>
+              <p class="helper-text">选择教师和学员视频。</p>
+            </div>
+          </div>
+
+          <div class="field-grid">
+            <div class="field-block">
+              <label class="field-label">教师视频</label>
+              <select v-model="teacherId">
+                <option value="">请选择教师示范视频</option>
+                <option v-for="item in teacherItems" :key="item.video_id" :value="item.video_id">
+                  {{ item.filename }}
+                </option>
+              </select>
+            </div>
+
+            <div class="field-block">
+              <label class="field-label">学员视频</label>
+              <select v-model="userId">
+                <option value="">请选择学员练习视频</option>
+                <option v-for="item in userItems" :key="item.video_id" :value="item.video_id">
+                  {{ item.filename }}
+                </option>
+              </select>
+            </div>
+          </div>
+
+          <EmptyState
+            v-if="!loading && (!teacherItems.length || !userItems.length)"
+            title="素材还不够"
+            copy="先上传教师示范和学员练习。"
+          >
+            <template #actions>
+              <RouterLink class="link-button secondary-button" to="/upload">去上传视频</RouterLink>
+            </template>
+          </EmptyState>
+
+          <EmptyState
+            v-else-if="!loading && (!teacherId || !userId)"
+            title="等待选择视频"
+            copy="选好两段视频后自动质检。"
+          />
+
+          <label class="simple-check">
+            <input type="checkbox" v-model="overwrite" />
+            <span class="check-mark" aria-hidden="true"></span>
+            <span>覆盖历史结果</span>
+          </label>
+
+          <div v-if="teacherId && userId" class="quality-check-card" :data-level="qualityCheck?.level || 'checking'">
+            <div class="quality-check-head">
+              <div>
+                <span class="quality-check-eyebrow">视频质量检查</span>
+                <strong>{{ qualityCheckTitle }}</strong>
+              </div>
+              <span class="quality-badge">{{ qualityCheckBadge }}</span>
+            </div>
+
+            <div v-if="qualityCheckLoading" class="helper-text">正在读取视频元数据...</div>
+            <template v-else-if="qualityCheck">
+              <div class="quality-meta-grid">
+                <div>
+                  <span>教师视频</span>
+                  <strong>{{ formatQualityMeta(qualityCheck.teacher_meta) }}</strong>
+                </div>
+                <div>
+                  <span>学员视频</span>
+                  <strong>{{ formatQualityMeta(qualityCheck.user_meta) }}</strong>
+                </div>
+              </div>
+              <ul class="quality-recommendations">
+                <li v-for="item in qualityCheckRecommendations" :key="item">{{ item }}</li>
+              </ul>
+            </template>
+          </div>
+
+          <div class="action-row rail-actions">
+            <button :disabled="!canStartAnalysis" @click="startAnalysis">
+              {{ analyzing ? "分析进行中..." : "发起分析" }}
+            </button>
+            <button class="ghost-button" :disabled="!canCancelCurrentPipeline || cancelingPipeline" @click="cancelCurrentPipeline">
+              {{ cancelingPipeline ? "取消中..." : "取消当前任务" }}
+            </button>
+          </div>
+
+          <div v-if="error" class="feedback-inline">{{ error }}</div>
+        </article>
+
+        <article class="surface-card analysis-session-card">
+          <div class="panel-head compact-head">
+            <div>
+              <h2>当前组合 <InfoHint text="这里展示本轮分析使用的素材和任务 ID，任务进度会在下方同步更新。" /></h2>
+              <p class="helper-text">核对素材和任务 ID。</p>
+            </div>
+          </div>
+
+          <div v-if="loading && !items.length" class="feedback-state" data-tone="loading">
+            <strong class="feedback-state-title">素材库同步中</strong>
+            <span class="feedback-state-copy">正在加载可用视频...</span>
+          </div>
+
+          <div v-else class="summary-stack compact-summary">
+            <div class="summary-row">
+              <span>教师素材</span>
+              <strong>{{ selectedTeacherLabel }}</strong>
+            </div>
+            <div class="summary-row">
+              <span>学员素材</span>
+              <strong>{{ selectedUserLabel }}</strong>
+            </div>
+            <div class="summary-row">
+              <span>任务 ID</span>
+              <strong>{{ pipelineId || "尚未创建任务" }}</strong>
+            </div>
+          </div>
+
+          <div v-if="pipelineId" class="progress-card">
+            <div class="progress-head">
+              <strong>{{ pipelineStageText }}</strong>
+              <span>{{ pipelineProgressPercent }}%</span>
+            </div>
+            <div class="progress-track"><div class="progress-fill" :style="{ width: `${pipelineProgressPercent}%` }"></div></div>
+            <p class="helper-text progress-copy">{{ pipelineMessage || analysisHint }}</p>
+          </div>
+        </article>
+
+        <section class="surface-card workflow-stepper" aria-label="分析流程">
+          <article
+            v-for="step in workflowSteps"
+            :key="step.key"
+            class="workflow-step-item"
+            :class="step.state"
+          >
+            <span class="workflow-step-index">{{ step.index }}</span>
+            <div>
+              <strong>{{ step.title }}</strong>
+              <p>{{ step.copy }}</p>
+            </div>
+          </article>
+        </section>
+      </aside>
     </section>
 
     <section class="result-card analysis-results" v-if="result || analyzing || pipelineStatus === 'pending' || pipelineStatus === 'running'">
       <div class="panel-head compact-head">
         <div>
-          <h2>分析结果</h2>
-          <p class="helper-text">{{ result?.pair_name || "本轮分析完成后，结果会显示在这里。" }}</p>
+          <h2>分析结果 <InfoHint text="分析完成后展示总分、可信度、问题片段、AI 助教和局部帧详情。" /></h2>
+          <p class="helper-text">{{ result?.pair_name || "等待分析结果。" }}</p>
         </div>
         <div class="mode-switch" v-if="result">
           <button class="secondary-button" :disabled="aiCoachLoading || !pipelineId" @click="loadAiCoach">
@@ -298,7 +298,7 @@
       <template v-if="!result">
         <div class="feedback-state" :data-tone="analyzing || pipelineStatus === 'pending' || pipelineStatus === 'running' ? 'loading' : 'empty'">
           <strong class="feedback-state-title">{{ analyzing || pipelineStatus === 'pending' || pipelineStatus === 'running' ? '分析任务正在执行' : '暂时还没有分析结果' }}</strong>
-          <span class="feedback-state-copy">{{ analyzing || pipelineStatus === 'pending' || pipelineStatus === 'running' ? analysisFeedbackText : '选择教师示范和学员练习后，点击发起分析即可生成结果。' }}</span>
+          <span class="feedback-state-copy">{{ analyzing || pipelineStatus === 'pending' || pipelineStatus === 'running' ? analysisFeedbackText : '选择视频并发起任务。' }}</span>
         </div>
       </template>
 
@@ -391,15 +391,15 @@
 
         <article class="surface-card sub-card simple-card compact-training-card" v-if="result.report?.beginner_report?.summary || result.report?.teaching_report?.summary">
           <h3>训练建议</h3>
-          <p class="helper-text" v-if="result.report?.beginner_report?.summary">学员反馈：{{ result.report.beginner_report.summary }}</p>
-          <p class="helper-text" v-if="result.report?.teaching_report?.summary">教学建议：{{ result.report.teaching_report.summary }}</p>
+          <p class="helper-text" v-if="result.report?.beginner_report?.summary">学员建议：{{ result.report.beginner_report.summary }}</p>
+          <p class="helper-text" v-if="result.report?.teaching_report?.summary">教师建议：{{ result.report.teaching_report.summary }}</p>
         </article>
       </template>
 
       <template v-else>
         <div v-if="!currentFrameInfo && frameDetailLoading" class="feedback-state" data-tone="loading">
           <strong class="feedback-state-title">当前帧详情加载中</strong>
-          <span class="feedback-state-copy">系统正在补充这一帧的详细分析，请稍候。</span>
+          <span class="feedback-state-copy">正在补齐局部问题和建议...</span>
         </div>
 
         <div v-else-if="currentFrameInfo" class="surface-card sub-card simple-card">
@@ -416,7 +416,7 @@
 
         <div v-else class="feedback-state" data-tone="empty">
           <strong class="feedback-state-title">暂停后查看局部细节</strong>
-          <span class="feedback-state-copy">先把视频停在要复盘的位置，再切换到当前时刻。</span>
+          <span class="feedback-state-copy">暂停到复盘位置后显示帧级细节。</span>
         </div>
       </template>
 
@@ -431,929 +431,152 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
-import { RouterLink, useRoute } from "vue-router";
-import { getAiCoachReport } from "../api/ai";
-import { absMediaUrl } from "../api/http";
+import { RouterLink } from "vue-router";
 import EmptyState from "../components/EmptyState.vue";
+import InfoHint from "../components/InfoHint.vue";
 import ConfidenceBanner from "../components/records/ConfidenceBanner.vue";
-import {
-  cancelPipeline,
-  getPipelineFrameDetail,
-  getPipelineFrameRange,
-  getPipelineResult,
-  getPipelineResultSummary,
-  getPipelineStatus,
-  runPipeline,
-} from "../api/pipelines";
-import { normalizedConfidenceIssues, normalizedConfidenceSummary } from "../utils/confidence";
-import { friendlyError } from "../utils/errors";
-import { checkVideoPairQuality, listVideos } from "../api/videos";
-import type {
-  AiCoachResponse,
-  PipelineFrameRangeResponse,
-  PipelineResultResponse,
-  PipelineRunResponse,
-  PipelineStatusResponse,
-  PipelineStatusType,
-  VideoQualityMeta,
-  VideoQualityResponse,
-  VideoItem,
-} from "../types/video";
-
-type WorkflowStepState = "done" | "active" | "locked";
-
-const route = useRoute();
-
-const loading = ref(false);
-const error = ref("");
-const items = ref<VideoItem[]>([]);
-const teacherId = ref("");
-const userId = ref("");
-const overwrite = ref(false);
-const analyzing = ref(false);
-const pipelineId = ref("");
-const pipelineStatus = ref<PipelineStatusType | "">("");
-const pipelineStage = ref("");
-const pipelineProgress = ref(0);
-const pipelineMessage = ref("");
-const cancelRequested = ref(false);
-const cancelingPipeline = ref(false);
-const result = ref<PipelineResultResponse | null>(null);
-const aiCoach = ref<AiCoachResponse | null>(null);
-const aiCoachLoading = ref(false);
-const aiCoachError = ref("");
-const analysisMode = ref<"overall" | "local">("overall");
-const frameDetailCache = ref<Record<number, Record<string, any>>>({});
-const frameDetailLoading = ref(false);
-const qualityCheck = ref<VideoQualityResponse | null>(null);
-const qualityCheckLoading = ref(false);
-const FRAME_WINDOW_RADIUS = 12;
-const REVIEW_PLAYBACK_RATE = 0.5;
-let pollTimer: number | null = null;
-let qualityCheckToken = 0;
-
-const teacherItems = computed(() => items.value.filter((item) => item.role === "teacher"));
-const userItems = computed(() => items.value.filter((item) => item.role === "user"));
-const selectedTeacher = computed(() => teacherItems.value.find((item) => item.video_id === teacherId.value));
-const selectedUser = computed(() => userItems.value.find((item) => item.video_id === userId.value));
-const selectedTeacherLabel = computed(() => selectedTeacher.value?.filename ?? "尚未选择教师视频");
-const selectedUserLabel = computed(() => selectedUser.value?.filename ?? "尚未选择学员视频");
-const teacherUrl = computed(() => (selectedTeacher.value ? absMediaUrl(selectedTeacher.value.url) : ""));
-const userUrl = computed(() => (selectedUser.value ? absMediaUrl(selectedUser.value.url) : ""));
-const pipelineStatusText = computed(() => pipelineStatusToText(pipelineStatus.value));
-const pipelineStageText = computed(() => stageToText(pipelineStage.value, pipelineStatus.value));
-const pipelineProgressPercent = computed(() => Math.round(Math.max(0, Math.min(1, pipelineProgress.value || 0)) * 100));
-const canCancelCurrentPipeline = computed(() => {
-  if (!pipelineId.value) return false;
-  return (pipelineStatus.value === "pending" || pipelineStatus.value === "running") && !cancelRequested.value;
-});
-const analysisHint = computed(() => {
-  if (!teacherId.value || !userId.value) return "先选择教师和学员素材";
-  if (analyzing.value || pipelineStatus.value === "pending" || pipelineStatus.value === "running") return "分析进行中，结果会自动刷新";
-  if (!result.value) return "当前组合已就绪，可以开始分析";
-  return "结果已生成，可以回放并定位问题点";
-});
-const analysisFeedbackText = computed(() => {
-  if (error.value) return error.value;
-  if (analyzing.value || pipelineStatus.value === "pending" || pipelineStatus.value === "running") {
-    const stage = pipelineStageText.value;
-    const message = pipelineMessage.value?.trim();
-    if (message) return `${stage} - ${message}`;
-    return `${stage} - ${pipelineProgressPercent.value}%`;
-  }
-  return analysisHint.value;
-});
-const hasSelectedPair = computed(() => Boolean(teacherId.value && userId.value));
-const canStartAnalysis = computed(() => {
-  if (!teacherId.value || !userId.value || analyzing.value || qualityCheckLoading.value) return false;
-  return qualityCheck.value?.level !== "error";
-});
-const qualityCheckTitle = computed(() => {
-  if (qualityCheckLoading.value) return "正在检查";
-  if (!qualityCheck.value) return "等待检查结果";
-  return qualityCheck.value.summary || "检查完成";
-});
-const qualityCheckBadge = computed(() => {
-  if (qualityCheckLoading.value) return "检查中";
-  if (qualityCheck.value?.level === "good") return "适合分析";
-  if (qualityCheck.value?.level === "warning") return "可继续，有提醒";
-  if (qualityCheck.value?.level === "error") return "请更换视频";
-  return "待检查";
-});
-const qualityCheckRecommendations = computed(() => {
-  const list = qualityCheck.value?.recommendations || [];
-  return list.length ? list.slice(0, 3) : ["检查通过后再发起分析，可以减少拍摄质量对评分理解的干扰。"];
-});
-const hasActivePipeline = computed(() => analyzing.value || pipelineStatus.value === "pending" || pipelineStatus.value === "running");
-const workflowSteps = computed<Array<{ key: string; index: string; title: string; copy: string; state: WorkflowStepState }>>(() => {
-  const selectDone = hasSelectedPair.value;
-  const runDone = Boolean(result.value);
-  const runActive = selectDone && !runDone;
-  const reviewActive = Boolean(result.value);
-
-  return [
-    {
-      key: "select",
-      index: "01",
-      title: "选择素材",
-      copy: selectDone ? "教师与学员素材已就绪" : "先选择一组教师示范和学员练习",
-      state: selectDone ? "done" : "active",
-    },
-    {
-      key: "run",
-      index: "02",
-      title: "确认并分析",
-      copy: hasActivePipeline.value ? analysisFeedbackText.value : pipelineId.value ? "任务已创建，可继续查看进度" : "确认组合后发起动作分析",
-      state: runDone ? "done" : runActive ? "active" : "locked",
-    },
-    {
-      key: "review",
-      index: "03",
-      title: "复盘结果",
-      copy: result.value ? "查看分数、可信度、问题片段和 AI 建议" : "分析完成后自动开放结果复盘",
-      state: reviewActive ? "active" : "locked",
-    },
-  ];
-});
-
-const displayTeacherUrl = computed(() => {
-  const url = result.value?.files?.teacher_overlay_url;
-  if (!url) return teacherUrl.value;
-  const version = pipelineId.value || "";
-  const separator = url.includes("?") ? "&" : "?";
-  return absMediaUrl(`${url}${version ? `${separator}v=${encodeURIComponent(version)}` : ""}`);
-});
-const displayUserUrl = computed(() => {
-  const url = result.value?.files?.user_overlay_url;
-  if (!url) return userUrl.value;
-  const version = pipelineId.value || "";
-  const separator = url.includes("?") ? "&" : "?";
-  return absMediaUrl(`${url}${version ? `${separator}v=${encodeURIComponent(version)}` : ""}`);
-});
-
-const markers = computed(() => {
-  const list = result.value?.report?.markers;
-  if (!Array.isArray(list)) return [];
-  return list as Array<{ frame: number; sec: number; type: string; severity?: string }>;
-});
-const markerDots = computed(() =>
-  markers.value.map((item) => ({
-    ...item,
-    leftPct: duration.value > 1e-6 ? Math.max(0, Math.min(100, (item.sec / duration.value) * 100)) : 0,
-  })),
-);
-const problemHighlights = computed(() => {
-  const severityRank: Record<string, number> = { severe: 3, clear: 2, mild: 1 };
-  return [...markerDots.value]
-    .sort((a, b) => {
-      const severityDelta = (severityRank[String(b.severity ?? "")] ?? 0) - (severityRank[String(a.severity ?? "")] ?? 0);
-      if (severityDelta !== 0) return severityDelta;
-      return Number(a.sec) - Number(b.sec);
-    })
-    .slice(0, 6);
-});
-
-const mapUserSecArr = computed<number[]>(() =>
-  Array.isArray(result.value?.timeline?.map_user_sec) ? result.value.timeline.map_user_sec.map((value: any) => Number(value)) : [],
-);
-const teacherToUserArr = computed<number[]>(() =>
-  Array.isArray(result.value?.timeline?.teacher_to_user) ? result.value.timeline.teacher_to_user.map((value: any) => Number(value)) : [],
-);
-const fpsTeacher = computed<number>(() => {
-  const value = Number(result.value?.timeline?.fps_teacher ?? result.value?.report?.fps_teacher ?? 30);
-  return Number.isFinite(value) && value > 0 ? value : 30;
-});
-const fpsUser = computed<number>(() => {
-  const value = Number(result.value?.timeline?.fps_user ?? result.value?.report?.fps_user ?? 30);
-  return Number.isFinite(value) && value > 0 ? value : 30;
-});
-
-const frameAnalysisCount = computed<number>(() => {
-  const count = Number(result.value?.report?.frame_analysis_count);
-  if (Number.isFinite(count) && count > 0) return Math.floor(count);
-  return Array.isArray(result.value?.report?.frame_analysis) ? result.value.report.frame_analysis.length : 0;
-});
-const currentFrameIndex = computed<number | null>(() => {
-  if (frameAnalysisCount.value <= 0) return null;
-  const index = Math.round(currentTime.value * fpsTeacher.value);
-  return Math.max(0, Math.min(frameAnalysisCount.value - 1, index));
-});
-const hasFrameAnalysis = computed(() => frameAnalysisCount.value > 0);
-const currentFrameInfo = computed(() => {
-  const index = currentFrameIndex.value;
-  if (index === null) return null;
-  if (Array.isArray(result.value?.report?.frame_analysis) && result.value.report.frame_analysis.length > 0) {
-    return result.value.report.frame_analysis[index] ?? null;
-  }
-  return frameDetailCache.value[index] ?? null;
-});
-
-const overallScore = computed(() => Number(result.value?.report?.score_0_100 ?? result.value?.report?.scores?.score_total ?? 0));
-const poseScore = computed(() => Number(result.value?.report?.scores?.score_pose ?? 0));
-const tempoScore = computed(() => Number(result.value?.report?.scores?.score_tempo ?? 0));
-const overallAdvice = computed(() => result.value?.report?.recommendations?.overall ?? "保持身体主干稳定，优先修正误差最大的关节动作。");
-const topJointSummary = computed(() => {
-  const joints = result.value?.report?.top_joints;
-  if (!Array.isArray(joints) || joints.length === 0) return "分析完成后会在这里显示本轮最需要优先处理的关节。";
-  return joints.slice(0, 3).map((item: any) => `${item[0]} (${Number(item[1]).toFixed(3)})`).join("、");
-});
-const tempoSegmentSummary = computed(() => {
-  const list = result.value?.report?.tempo_segments;
-  if (!Array.isArray(list) || list.length === 0) return "暂无明显节奏异常区间。";
-  return `共 ${list.length} 段需要重点复盘的节奏异常片段。`;
-});
-const confidenceData = computed<Record<string, any> | null>(() => {
-  const confidence = result.value?.report?.confidence;
-  return confidence && typeof confidence === "object" ? confidence : null;
-});
-const resultConfidenceScore = computed(() => confidenceData.value?.score ?? result.value?.report?.confidence_score ?? null);
-const confidenceLevelText = computed(() => {
-  const level = String(confidenceData.value?.level ?? "");
-  if (level === "high") return "高";
-  if (level === "medium") return "中";
-  if (level === "low") return "低";
-  return "--";
-});
-const confidenceScoreText = computed(() => {
-  const score = Number(confidenceData.value?.score);
-  if (!Number.isFinite(score)) return "--";
-  return `${Math.round(score * 100)}%`;
-});
-const confidenceSummaryText = computed(() => normalizedConfidenceSummary(confidenceData.value));
-const confidenceIssues = computed<any[]>(() => normalizedConfidenceIssues(confidenceData.value));
-const aiCoachSourceText = computed(() => {
-  if (!aiCoach.value) return "";
-  if (aiCoach.value.generated_by === "aliyun") return aiCoach.value.model || "阿里云百炼";
-  if (aiCoach.value.generated_by === "openai") return aiCoach.value.model || "OpenAI";
-  return "本地兜底";
-});
-const aiCoachFallbackHint = computed(() => {
-  if (aiCoach.value?.generated_by !== "local_fallback") return "";
-  return "当前展示的是基于分析报告的本地规则建议；云端 AI 不可用时，演示复盘仍可继续。";
-});
-const confidenceTone = computed(() => {
-  const level = String(confidenceData.value?.level ?? "");
-  if (level === "high") return "ok";
-  if (level === "medium") return "warn";
-  if (level === "low") return "danger";
-  return "neutral";
-});
-
-const teacherRef = ref<HTMLVideoElement | null>(null);
-const userRef = ref<HTMLVideoElement | null>(null);
-const playing = ref(false);
-const duration = ref(0);
-const currentTime = ref(0);
-const pendingSeekSec = ref<number | null>(null);
-const routeSeekSec = ref<number | null>(null);
-const teacherMuted = ref(false);
-const userMuted = ref(false);
-const allMuted = computed(() => teacherMuted.value && userMuted.value);
-let syncTimer: number | null = null;
-let lastSeekAtMs = 0;
-let filteredDiff = 0;
-
-const SYNC_SEEK_THRESHOLD_SEC = 0.45;
-const SYNC_SEEK_COOLDOWN_MS = 650;
-const SYNC_RATE_DEADZONE_SEC = 0.06;
-const SYNC_RATE_MIN = 0.97;
-const SYNC_RATE_MAX = 1.03;
-const SYNC_RATE_GAIN = 0.12;
-
-function getSeekableEnd(video: HTMLVideoElement | null): number {
-  if (!video) return 0;
-  try {
-    if (video.seekable?.length) return Number(video.seekable.end(video.seekable.length - 1)) || 0;
-  } catch {
-    return 0;
-  }
-  return 0;
-}
-
-function getSeekableStart(video: HTMLVideoElement | null): number {
-  if (!video) return 0;
-  try {
-    if (video.seekable?.length) return Number(video.seekable.start(0)) || 0;
-  } catch {
-    return 0;
-  }
-  return 0;
-}
-
-function formatSecondsMaybe(value: unknown) {
-  const num = Number(value);
-  if (!Number.isFinite(num)) return "--";
-  return `${num.toFixed(2)}s`;
-}
-
-function formatQualityMeta(meta?: VideoQualityMeta | null) {
-  if (!meta) return "暂无元信息";
-  if (meta.readable === false) return meta.error || "无法读取";
-  const durationText = formatSecondsMaybe(meta.duration_sec);
-  const width = Number(meta.width);
-  const height = Number(meta.height);
-  const resolution = Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0 ? `${width}x${height}` : "--";
-  const fps = Number(meta.fps);
-  const fpsText = Number.isFinite(fps) && fps > 0 ? `${fps.toFixed(1)}fps` : "--";
-  return `${durationText} / ${resolution} / ${fpsText}`;
-}
-
-async function refreshQualityCheck() {
-  const teacher = teacherId.value;
-  const user = userId.value;
-  qualityCheckToken += 1;
-  const token = qualityCheckToken;
-  qualityCheck.value = null;
-  if (!teacher || !user) {
-    qualityCheckLoading.value = false;
-    return;
-  }
-
-  qualityCheckLoading.value = true;
-  try {
-    const response = await checkVideoPairQuality({
-      teacherVideoId: teacher,
-      userVideoId: user,
-    });
-    if (token === qualityCheckToken) {
-      qualityCheck.value = response;
-    }
-  } catch (e: any) {
-    if (token === qualityCheckToken) {
-      qualityCheck.value = {
-        ok: false,
-        level: "error",
-        summary: friendlyError(e, "视频质量检查失败"),
-        checks: [],
-        teacher_meta: null,
-        user_meta: null,
-        recommendations: ["请确认本地后端和 ffprobe 可用，或重新选择视频后再试。"],
-      };
-    }
-  } finally {
-    if (token === qualityCheckToken) {
-      qualityCheckLoading.value = false;
-    }
-  }
-}
-
-function timingOffsetText(value: unknown) {
-  const num = Number(value);
-  if (!Number.isFinite(num)) return "--";
-  const abs = Math.abs(num);
-  if (abs < 0.02) return "已对齐";
-  return num > 0 ? `慢 ${abs.toFixed(2)}s` : `快 ${abs.toFixed(2)}s`;
-}
-
-function markerLabel(type: string) {
-  if (type === "pose_error") return "动作误差";
-  if (type === "tempo") return "节奏异常";
-  if (type === "tracking_bad") return "跟踪问题";
-  return "标记";
-}
-
-function markerClass(type: string) {
-  if (type === "pose_error") return "m-pose";
-  if (type === "tempo") return "m-tempo";
-  if (type === "tracking_bad") return "m-track";
-  return "";
-}
-
-function pipelineStatusToText(status?: string) {
-  if (status === "pending") return "等待中";
-  if (status === "running") return "分析中";
-  if (status === "done") return "已完成";
-  if (status === "failed") return "失败";
-  if (status === "canceled") return "已取消";
-  return status || "未开始";
-}
-
-function stageToText(stage?: string, status?: string) {
-  if (stage === "queued") return "已进入队列";
-  if (stage === "preparing_inputs") return "准备素材";
-  if (stage === "extracting_pose") return "提取骨架";
-  if (stage === "aligning_motion") return "动作对齐与评分";
-  if (stage === "rendering_outputs") return "生成对比输出";
-  if (stage === "packaging_results") return "整理结果";
-  if (stage === "completed") return "结果已就绪";
-  if (stage === "failed") return "任务失败";
-  if (stage === "canceled") return "任务已取消";
-  return pipelineStatusToText(status);
-}
-
-function severityText(severity?: string) {
-  if (severity === "mild") return "轻微";
-  if (severity === "clear") return "明显";
-  if (severity === "severe") return "严重";
-  return severity || "-";
-}
-
-function markerFocusCopy(marker: { sec: number; frame: number; type: string; severity?: string }) {
-  return `${markerLabel(marker.type)} | ${severityText(marker.severity)} | 跳转到 ${Number(marker.sec).toFixed(2)}s 并以 0.5x 回放`;
-}
-
-function applyPlaybackRates(rate: number) {
-  if (teacherRef.value) teacherRef.value.playbackRate = rate;
-  if (userRef.value) userRef.value.playbackRate = rate;
-}
-
-function restoreNormalPlayback() {
-  applyPlaybackRates(1);
-}
-
-function stopSyncTimer() {
-  if (syncTimer !== null) {
-    window.clearInterval(syncTimer);
-    syncTimer = null;
-  }
-}
-
-function stopPolling() {
-  if (pollTimer !== null) {
-    window.clearInterval(pollTimer);
-    pollTimer = null;
-  }
-}
-
-function applyPipelineMeta(meta?: Partial<PipelineRunResponse & PipelineStatusResponse & PipelineResultResponse> | null) {
-  if (!meta) return;
-  if (meta.status) pipelineStatus.value = meta.status;
-  pipelineStage.value = meta.stage ?? pipelineStage.value;
-  if (typeof meta.progress === "number" && Number.isFinite(meta.progress)) {
-    pipelineProgress.value = Math.max(0, Math.min(1, meta.progress));
-  }
-  if (typeof meta.message === "string") {
-    pipelineMessage.value = meta.message;
-  }
-  if (typeof meta.cancel_requested === "boolean") {
-    cancelRequested.value = meta.cancel_requested;
-  }
-}
-
-function mapUserSec(teacherSec: number): number {
-  if (teacherToUserArr.value.length) {
-    const teacherIndex = Math.max(0, Math.min(teacherToUserArr.value.length - 1, Math.round(teacherSec * fpsTeacher.value)));
-    const userFrame = Number(teacherToUserArr.value[teacherIndex]);
-    if (Number.isFinite(userFrame)) return Math.max(0, userFrame / Math.max(1e-6, fpsUser.value));
-  }
-  if (!mapUserSecArr.value.length) return teacherSec;
-  const index = Math.max(0, Math.min(mapUserSecArr.value.length - 1, teacherSec * fpsTeacher.value));
-  const lower = Math.floor(index);
-  const upper = Math.min(mapUserSecArr.value.length - 1, lower + 1);
-  const fraction = index - lower;
-  const start = Number(mapUserSecArr.value[lower]);
-  const end = Number(mapUserSecArr.value[upper]);
-  if (!Number.isFinite(start) || !Number.isFinite(end)) return teacherSec;
-  return start * (1 - fraction) + end * fraction;
-}
-
-function syncLoop() {
-  const teacher = teacherRef.value;
-  const user = userRef.value;
-  if (!teacher || !user) return;
-  const baseRate = teacher.playbackRate > 0 ? teacher.playbackRate : 1;
-  const targetUserSec = mapUserSec(teacher.currentTime);
-  const diff = targetUserSec - user.currentTime;
-  filteredDiff = 0.7 * filteredDiff + 0.3 * diff;
-  const now = Date.now();
-  const absDiff = Math.abs(filteredDiff);
-
-  if (absDiff > SYNC_SEEK_THRESHOLD_SEC && now - lastSeekAtMs >= SYNC_SEEK_COOLDOWN_MS) {
-    user.currentTime = targetUserSec;
-    user.playbackRate = baseRate;
-    lastSeekAtMs = now;
-  } else if (absDiff <= SYNC_RATE_DEADZONE_SEC) {
-    user.playbackRate = baseRate;
-  } else {
-    const nextRate = baseRate * (1 + SYNC_RATE_GAIN * filteredDiff);
-    user.playbackRate = Math.max(baseRate * SYNC_RATE_MIN, Math.min(baseRate * SYNC_RATE_MAX, nextRate));
-  }
-
-  currentTime.value = teacher.currentTime;
-}
-
-function refreshDuration() {
-  const teacher = teacherRef.value;
-  const user = userRef.value;
-  if (!teacher) return;
-  const teacherDuration = Number.isFinite(teacher.duration) ? teacher.duration : 0;
-  const userDuration = user && Number.isFinite(user.duration) ? user.duration : 0;
-  const teacherEnd = teacherDuration > 0 ? teacherDuration : getSeekableEnd(teacher);
-  const userEnd = user ? (userDuration > 0 ? userDuration : getSeekableEnd(user)) : 0;
-  duration.value = Math.max(0, Math.min(teacherEnd || 0, userEnd || teacherEnd || 0));
-  if (pendingSeekSec.value !== null && duration.value > 0) {
-    const nextSec = pendingSeekSec.value;
-    pendingSeekSec.value = null;
-    seekBoth(nextSec);
-  }
-}
-
-function onTeacherTimeUpdate() {
-  if (teacherRef.value) currentTime.value = teacherRef.value.currentTime;
-}
-
-async function onTeacherPlay() {
-  playing.value = true;
-  analysisMode.value = "overall";
-  if (userRef.value) {
-    userRef.value.currentTime = mapUserSec(teacherRef.value?.currentTime ?? 0);
-    userRef.value.playbackRate = teacherRef.value?.playbackRate || 1;
-    try {
-      await userRef.value.play();
-    } catch {
-      // ignore
-    }
-  }
-  filteredDiff = 0;
-  stopSyncTimer();
-  syncTimer = window.setInterval(syncLoop, 100);
-}
-
-function onTeacherPause() {
-  playing.value = false;
-  analysisMode.value = "local";
-  if (userRef.value) {
-    userRef.value.pause();
-    userRef.value.playbackRate = 1;
-  }
-  stopSyncTimer();
-}
-
-async function togglePlay() {
-  if (!teacherRef.value) return;
-  if (teacherRef.value.paused) {
-    try {
-      await teacherRef.value.play();
-    } catch {
-      // ignore
-    }
-  } else {
-    teacherRef.value.pause();
-  }
-}
-
-function seekBoth(target: number) {
-  const teacher = teacherRef.value;
-  if (!teacher) {
-    pendingSeekSec.value = Math.max(0, Number(target) || 0);
-    return;
-  }
-  const teacherDuration = Number.isFinite(teacher.duration) && teacher.duration > 0 ? teacher.duration : (getSeekableEnd(teacher) || duration.value);
-  if (!(teacherDuration > 0)) {
-    pendingSeekSec.value = Math.max(0, Number(target) || 0);
-    return;
-  }
-  const start = getSeekableStart(teacher);
-  const end = getSeekableEnd(teacher) || teacherDuration;
-  const teacherSec = Math.max(start, Math.min(end, Number(target)));
-  teacher.currentTime = teacherSec;
-  if (userRef.value) {
-    userRef.value.currentTime = mapUserSec(teacherSec);
-    userRef.value.playbackRate = teacher.playbackRate || 1;
-    if (!teacher.paused) void userRef.value.play().catch(() => {});
-  }
-  lastSeekAtMs = Date.now();
-  currentTime.value = teacherSec;
-  analysisMode.value = "local";
-}
-
-function applyMuteState() {
-  if (teacherRef.value) teacherRef.value.muted = teacherMuted.value;
-  if (userRef.value) userRef.value.muted = userMuted.value;
-}
-
-function toggleTeacherMute() {
-  teacherMuted.value = !teacherMuted.value;
-  applyMuteState();
-}
-
-function toggleUserMute() {
-  userMuted.value = !userMuted.value;
-  applyMuteState();
-}
-
-function toggleAllMute() {
-  const nextValue = !allMuted.value;
-  teacherMuted.value = nextValue;
-  userMuted.value = nextValue;
-  applyMuteState();
-}
-
-function onTrackClick(event: MouseEvent) {
-  const durationValue = duration.value > 0 ? duration.value : (teacherRef.value ? Number(teacherRef.value.duration || getSeekableEnd(teacherRef.value)) : 0);
-  if (!(durationValue > 0)) return;
-  const element = event.currentTarget as HTMLElement | null;
-  if (!element) return;
-  const rect = element.getBoundingClientRect();
-  const ratio = Math.max(0, Math.min(1, rect.width > 0 ? (event.clientX - rect.left) / rect.width : 0));
-  seekBoth(ratio * durationValue);
-}
-
-function seekToMarker(sec: number, frame?: number) {
-  if (Number.isFinite(Number(frame))) {
-    seekBoth(Number(frame) / Math.max(1e-6, fpsTeacher.value));
-    return;
-  }
-  seekBoth(sec);
-}
-
-async function focusMarker(marker: { sec: number; frame: number; type: string; severity?: string }) {
-  const targetFrame = Number.isFinite(Number(marker.frame)) ? Number(marker.frame) : Math.round(Number(marker.sec) * fpsTeacher.value);
-  seekToMarker(marker.sec, marker.frame);
-  analysisMode.value = "local";
-  await ensureFrameWindow(targetFrame, FRAME_WINDOW_RADIUS);
-  applyPlaybackRates(REVIEW_PLAYBACK_RATE);
-  if (teacherRef.value?.paused) {
-    try {
-      await teacherRef.value.play();
-    } catch {
-      // ignore
-    }
-  }
-}
-
-function jumpPrevMarker() {
-  const list = markerDots.value.map((item) => Number(item.sec)).filter((sec) => Number.isFinite(sec)).sort((a, b) => a - b);
-  if (!list.length) return;
-  let target = list[0];
-  for (const sec of list) {
-    if (sec < currentTime.value - 0.05) target = sec;
-    else break;
-  }
-  seekToMarker(target);
-}
-
-function jumpNextMarker() {
-  const list = markerDots.value.map((item) => Number(item.sec)).filter((sec) => Number.isFinite(sec)).sort((a, b) => a - b);
-  if (!list.length) return;
-  let target = list[list.length - 1];
-  for (const sec of list) {
-    if (sec > currentTime.value + 0.05) {
-      target = sec;
-      break;
-    }
-  }
-  seekToMarker(target);
-}
-
-function stepBy(delta: number) {
-  seekBoth(currentTime.value + delta);
-}
-
-function routeQueryValue(value: unknown) {
-  return typeof value === "string" ? value : "";
-}
-
-async function hydrateFromRoute() {
-  const teacherQuery = routeQueryValue(route.query.teacher);
-  const userQuery = routeQueryValue(route.query.user);
-  const pipelineQuery = routeQueryValue(route.query.pipeline);
-  const secQuery = Number(routeQueryValue(route.query.sec));
-  const modeQuery = routeQueryValue(route.query.mode);
-
-  if (teacherQuery && teacherItems.value.some((item) => item.video_id === teacherQuery)) {
-    teacherId.value = teacherQuery;
-  }
-  if (userQuery && userItems.value.some((item) => item.video_id === userQuery)) {
-    userId.value = userQuery;
-  }
-  routeSeekSec.value = Number.isFinite(secQuery) ? Math.max(0, secQuery) : null;
-
-  if (!pipelineQuery) {
-    if (modeQuery === "local") analysisMode.value = "local";
-    return;
-  }
-
-  pipelineId.value = pipelineQuery;
-  try {
-    result.value = await getPipelineResultSummary(pipelineQuery);
-  } catch {
-    try {
-      result.value = await getPipelineResult(pipelineQuery);
-    } catch {
-      return;
-    }
-  }
-  applyPipelineMeta(result.value);
-  analysisMode.value = modeQuery === "local" ? "local" : "overall";
-  if (routeSeekSec.value !== null) {
-    pendingSeekSec.value = routeSeekSec.value;
-  }
-}
-
-async function loadList() {
-  loading.value = true;
-  error.value = "";
-  try {
-    const data = await listVideos("all");
-    items.value = data.items;
-    await hydrateFromRoute();
-    if (!teacherId.value && teacherItems.value.length > 0) teacherId.value = teacherItems.value[0].video_id;
-    if (!userId.value && userItems.value.length > 0) userId.value = userItems.value[0].video_id;
-  } catch (e: any) {
-    error.value = friendlyError(e, "视频列表加载失败");
-  } finally {
-    loading.value = false;
-  }
-}
-
-async function pollStatus(id: string) {
-  try {
-    const status = await getPipelineStatus(id);
-    applyPipelineMeta(status);
-    if (status.status === "done" || status.status === "failed" || status.status === "canceled") {
-      stopPolling();
-      analyzing.value = false;
-      try {
-        result.value = await getPipelineResultSummary(id);
-      } catch {
-        result.value = await getPipelineResult(id);
-      }
-      applyPipelineMeta(result.value);
-      analysisMode.value = "overall";
-      aiCoach.value = null;
-      aiCoachError.value = "";
-    }
-  } catch (e: any) {
-    stopPolling();
-    analyzing.value = false;
-    error.value = friendlyError(e, "流程状态查询失败");
-  }
-}
-
-async function startAnalysis() {
-  if (!teacherId.value || !userId.value) return;
-  if (qualityCheck.value?.level === "error") {
-    error.value = "视频质量检查未通过，请更换视频后再发起分析。";
-    return;
-  }
-  analyzing.value = true;
-  result.value = null;
-  aiCoach.value = null;
-  aiCoachError.value = "";
-  frameDetailCache.value = {};
-  frameDetailLoading.value = false;
-  pipelineMessage.value = "";
-  pipelineStage.value = "queued";
-  pipelineProgress.value = 0;
-  cancelRequested.value = false;
-  error.value = "";
-  try {
-    const response = await runPipeline({
-      teacher_video_id: teacherId.value,
-      user_video_id: userId.value,
-      overwrite: overwrite.value,
-    });
-    pipelineId.value = response.pipeline_id;
-    applyPipelineMeta(response);
-    stopPolling();
-    pollTimer = window.setInterval(() => {
-      void pollStatus(response.pipeline_id);
-    }, 2000);
-    await pollStatus(response.pipeline_id);
-  } catch (e: any) {
-    analyzing.value = false;
-    error.value = friendlyError(e, "流程启动失败");
-  }
-}
-
-async function loadAiCoach() {
-  if (!pipelineId.value) return;
-  aiCoachLoading.value = true;
-  aiCoachError.value = "";
-  try {
-    aiCoach.value = await getAiCoachReport(pipelineId.value);
-  } catch (e: any) {
-    aiCoachError.value = friendlyError(e, "AI助教生成失败");
-  } finally {
-    aiCoachLoading.value = false;
-  }
-}
-
-async function cancelCurrentPipeline() {
-  if (!pipelineId.value || !canCancelCurrentPipeline.value) return;
-  cancelingPipeline.value = true;
-  error.value = "";
-  try {
-    const status = await cancelPipeline(pipelineId.value);
-    applyPipelineMeta(status);
-    if (status.status === "canceled") {
-      analyzing.value = false;
-      stopPolling();
-    }
-  } catch (e: any) {
-    error.value = friendlyError(e, "取消任务失败");
-  } finally {
-    cancelingPipeline.value = false;
-  }
-}
-
-async function ensureFrameWindow(frame: number | null, radius = FRAME_WINDOW_RADIUS) {
-  if (frame === null || !pipelineId.value || frameAnalysisCount.value <= 0) return;
-  if (Array.isArray(result.value?.report?.frame_analysis)) return;
-
-  const start = Math.max(0, frame - radius);
-  const end = Math.min(frameAnalysisCount.value - 1, frame + radius);
-  let needsLoad = false;
-  for (let index = start; index <= end; index += 1) {
-    if (!frameDetailCache.value[index]) {
-      needsLoad = true;
-      break;
-    }
-  }
-  if (!needsLoad) return;
-
-  frameDetailLoading.value = true;
-  try {
-    const range: PipelineFrameRangeResponse = await getPipelineFrameRange(pipelineId.value, {
-      start_frame: start,
-      end_frame: end,
-    });
-    const nextCache = { ...frameDetailCache.value };
-    for (const item of range.items) {
-      if (item.frame_analysis) nextCache[item.frame] = item.frame_analysis;
-    }
-    frameDetailCache.value = nextCache;
-  } finally {
-    frameDetailLoading.value = false;
-  }
-}
-
-async function ensureFrameDetail(frame: number | null) {
-  if (frame === null) return;
-  if (frameDetailCache.value[frame]) return;
-  await ensureFrameWindow(frame, 2);
-  if (frameDetailCache.value[frame] || !pipelineId.value || Array.isArray(result.value?.report?.frame_analysis)) return;
-  frameDetailLoading.value = true;
-  try {
-    const detail = await getPipelineFrameDetail(pipelineId.value, frame);
-    if (detail.frame_analysis) {
-      frameDetailCache.value = { ...frameDetailCache.value, [frame]: detail.frame_analysis };
-    }
-  } finally {
-    frameDetailLoading.value = false;
-  }
-}
-
-onMounted(() => {
-  void loadList();
-});
-
-watch([displayTeacherUrl, displayUserUrl], () => {
-  playing.value = false;
-  currentTime.value = 0;
-  duration.value = 0;
-  pendingSeekSec.value = null;
-  filteredDiff = 0;
-  restoreNormalPlayback();
-  stopSyncTimer();
-});
-
-watch([teacherMuted, userMuted], applyMuteState);
-
-watch([teacherId, userId], () => {
-  result.value = null;
-  aiCoach.value = null;
-  aiCoachError.value = "";
-  analysisMode.value = "overall";
-  frameDetailCache.value = {};
-  frameDetailLoading.value = false;
-  pipelineId.value = "";
-  pipelineStatus.value = "";
-  pipelineStage.value = "";
-  pipelineProgress.value = 0;
-  pipelineMessage.value = "";
-  cancelRequested.value = false;
-  routeSeekSec.value = null;
-  void refreshQualityCheck();
-});
-
-watch([analysisMode, currentFrameIndex, result], ([mode, frame]) => {
-  if (mode !== "local") return;
-  void ensureFrameWindow(frame);
-  void ensureFrameDetail(frame);
-});
-
-watch(
-  () => [route.query.teacher, route.query.user, route.query.pipeline, route.query.sec, route.query.mode],
-  () => {
-    if (!items.value.length) return;
-    void hydrateFromRoute();
-  },
-);
-
-watch([duration, result], ([nextDuration, nextResult]) => {
-  if (!nextResult || !(nextDuration > 0) || routeSeekSec.value === null) return;
-  seekBoth(routeSeekSec.value);
-  analysisMode.value = "local";
-  routeSeekSec.value = null;
-});
-
-onBeforeUnmount(() => {
-  stopSyncTimer();
-  stopPolling();
-});
+import { useComparePage } from "../composables/useComparePage";
+
+const page = useComparePage();
+const {
+  loading,
+  error,
+  items,
+  teacherId,
+  userId,
+  overwrite,
+  analyzing,
+  pipelineId,
+  pipelineStatus,
+  pipelineStage,
+  pipelineProgress,
+  pipelineMessage,
+  cancelRequested,
+  cancelingPipeline,
+  result,
+  aiCoach,
+  aiCoachLoading,
+  aiCoachError,
+  analysisMode,
+  frameDetailCache,
+  frameDetailLoading,
+  qualityCheck,
+  qualityCheckLoading,
+  FRAME_WINDOW_RADIUS,
+  REVIEW_PLAYBACK_RATE,
+  qualityCheckToken,
+  teacherItems,
+  userItems,
+  selectedTeacher,
+  selectedUser,
+  selectedTeacherLabel,
+  selectedUserLabel,
+  teacherUrl,
+  userUrl,
+  pipelineStatusText,
+  pipelineStageText,
+  pipelineProgressPercent,
+  canCancelCurrentPipeline,
+  analysisHint,
+  analysisFeedbackText,
+  hasSelectedPair,
+  canStartAnalysis,
+  qualityCheckTitle,
+  qualityCheckBadge,
+  qualityCheckRecommendations,
+  hasActivePipeline,
+  workflowSteps,
+  displayTeacherUrl,
+  displayUserUrl,
+  markers,
+  markerDots,
+  problemHighlights,
+  mapUserSecArr,
+  teacherToUserArr,
+  fpsTeacher,
+  fpsUser,
+  frameAnalysisCount,
+  currentFrameIndex,
+  hasFrameAnalysis,
+  currentFrameInfo,
+  overallScore,
+  poseScore,
+  tempoScore,
+  overallAdvice,
+  topJointSummary,
+  tempoSegmentSummary,
+  confidenceData,
+  resultConfidenceScore,
+  confidenceLevelText,
+  confidenceScoreText,
+  confidenceSummaryText,
+  confidenceIssues,
+  aiCoachSourceText,
+  aiCoachFallbackHint,
+  confidenceTone,
+  teacherRef,
+  userRef,
+  playing,
+  duration,
+  currentTime,
+  pendingSeekSec,
+  routeSeekSec,
+  teacherMuted,
+  userMuted,
+  allMuted,
+  lastSeekAtMs,
+  filteredDiff,
+  SYNC_SEEK_THRESHOLD_SEC,
+  SYNC_SEEK_COOLDOWN_MS,
+  SYNC_RATE_DEADZONE_SEC,
+  SYNC_RATE_MIN,
+  SYNC_RATE_MAX,
+  SYNC_RATE_GAIN,
+  getSeekableEnd,
+  getSeekableStart,
+  formatSecondsMaybe,
+  formatQualityMeta,
+  refreshQualityCheck,
+  timingOffsetText,
+  markerLabel,
+  markerClass,
+  pipelineStatusToText,
+  stageToText,
+  severityText,
+  markerFocusCopy,
+  applyPlaybackRates,
+  restoreNormalPlayback,
+  stopSyncTimer,
+  stopPolling,
+  applyPipelineMeta,
+  mapUserSec,
+  syncLoop,
+  refreshDuration,
+  onTeacherTimeUpdate,
+  onTeacherPlay,
+  onTeacherPause,
+  togglePlay,
+  seekBoth,
+  applyMuteState,
+  toggleTeacherMute,
+  toggleUserMute,
+  toggleAllMute,
+  onTrackClick,
+  seekToMarker,
+  focusMarker,
+  jumpPrevMarker,
+  jumpNextMarker,
+  stepBy,
+  routeQueryValue,
+  hydrateFromRoute,
+  loadList,
+  pollStatus,
+  startAnalysis,
+  loadAiCoach,
+  cancelCurrentPipeline,
+  ensureFrameWindow,
+  ensureFrameDetail,
+} = page;
 </script>
 
 <style scoped>
@@ -1379,7 +602,6 @@ onBeforeUnmount(() => {
   grid-template-columns: minmax(0, 1fr);
   grid-template-areas:
     "head"
-    "workflow"
     "workbench"
     "result";
   align-items: stretch;
@@ -1387,10 +609,6 @@ onBeforeUnmount(() => {
 
 .compare-workbench > .compare-head {
   grid-area: head;
-}
-
-.compare-workbench > .workflow-stepper {
-  grid-area: workflow;
 }
 
 .compare-workbench > .analysis-workbench {
@@ -1511,12 +729,33 @@ onBeforeUnmount(() => {
 
 .analysis-workbench {
   grid-template-columns: minmax(0, 1fr);
+  grid-template-areas:
+    "stage"
+    "controls";
   align-items: start;
+}
+
+.analysis-workbench > .analysis-stage-card {
+  grid-area: stage;
+}
+
+.analysis-workbench > .analysis-rail {
+  grid-area: controls;
 }
 
 .analysis-rail {
   grid-template-columns: minmax(260px, 0.72fr) minmax(320px, 1fr);
   align-items: stretch;
+}
+
+.analysis-rail > .workflow-stepper {
+  grid-column: 1 / -1;
+}
+
+.analysis-rail > .analysis-config-card,
+.analysis-rail > .analysis-session-card,
+.analysis-rail > .workflow-stepper {
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.04);
 }
 
 .analysis-config-card,
@@ -1824,6 +1063,11 @@ onBeforeUnmount(() => {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
+.analysis-results {
+  animation: resultReveal 0.24s ease-out;
+  scroll-margin-top: 24px;
+}
+
 .analysis-result-grid {
   grid-template-columns: minmax(0, 1.1fr) minmax(300px, 0.9fr);
 }
@@ -1920,6 +1164,18 @@ onBeforeUnmount(() => {
   box-shadow: 0 12px 24px rgba(15, 143, 179, 0.22);
 }
 
+@keyframes resultReveal {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 @media (max-width: 1280px) {
   .analysis-workbench,
   .analysis-result-grid {
@@ -1928,6 +1184,12 @@ onBeforeUnmount(() => {
 
   .analysis-rail {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .analysis-results {
+    animation: none;
   }
 }
 

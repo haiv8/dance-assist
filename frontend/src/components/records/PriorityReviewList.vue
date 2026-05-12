@@ -3,17 +3,17 @@
     <div class="priority-head">
       <div>
         <strong>本次优先复盘</strong>
-        <span class="helper-text">按严重程度和时间自动整理，先处理最值得回看的片段。</span>
+        <span class="helper-text">先回放高风险片段。</span>
       </div>
       <span class="tag neutral">{{ priorityItems.length }} 项</span>
     </div>
 
     <span v-if="lowConfidence" class="priority-warning">
-      当前可信度较低，建议结合视频回看判断，不要只根据问题片段练习。
+      可信度较低，结合视频回看。
     </span>
 
     <div v-if="!priorityItems.length" class="priority-empty">
-      暂时没有可复盘的问题片段。
+      暂无片段，完成分析后自动列入。
     </div>
 
     <div v-else class="priority-list">
@@ -23,7 +23,7 @@
           <span>{{ severityText(item.severity) }}</span>
           <span>{{ issueTypeText(item.type) }}</span>
         </div>
-        <strong>{{ item.summary || "该片段需要结合视频回看确认。" }}</strong>
+        <strong>{{ item.summary || "片段待确认，先回看视频。" }}</strong>
         <span class="helper-text">{{ item.action || fallbackAction(item.type) }}</span>
         <button type="button" class="secondary-button priority-jump" @click="$emit('jumpIssue', item)">
           跳转回放
@@ -85,7 +85,7 @@ function severityText(value?: string) {
 function fallbackAction(type?: string) {
   const normalized = String(type || "").trim();
   if (normalized === "tempo" || normalized === "tempo_fast" || normalized === "tempo_slow") {
-    return "建议慢速回放该片段，先对齐动作进入和结束的节奏。";
+    return "慢速回放进入和结束，对齐节拍。";
   }
   if (
     normalized === "confidence" ||
@@ -94,9 +94,9 @@ function fallbackAction(type?: string) {
     normalized === "tracking_bad" ||
     normalized === "tracking_issue"
   ) {
-    return "建议先检查全身入镜、遮挡和光照，再结合视频判断。";
+    return "检查入镜、遮挡和光照，再确认评分可信度。";
   }
-  return "建议先慢速拆解该动作，再回到完整片段串联练习。";
+  return "慢速拆解，再串联完整片段。";
 }
 
 function timeText(sec?: number | null) {

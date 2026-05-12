@@ -19,11 +19,11 @@ export function normalizeScoreExplanation(value: unknown): ScoreExplanation | nu
   if (!item.summary && !item.next_action && !item.score_note) return null;
   return {
     level: item.level || null,
-    summary: item.summary || "总分用于辅助训练复盘，需要结合视频和问题片段一起判断。",
-    score_note: item.score_note || "总分综合动作准确性、节奏匹配、流畅度和质量风险；分数用于训练复盘，不等同于教师评分。",
-    confidence_note: item.confidence_note || "可信度用于说明姿态跟踪和对齐结果是否稳定，不等同于动作好坏。",
+    summary: item.summary || "状态：总分已生成。操作：结合视频和问题片段判断。反馈：辅助训练复盘。",
+    score_note: item.score_note || "状态：总分为辅助指标。操作：查看动作、节奏、流畅度和质量风险。反馈：不等同教师评分。",
+    confidence_note: item.confidence_note || "状态：可信度说明跟踪稳定性。操作：低可信时回看视频。反馈：避免误读动作好坏。",
     main_factor: item.main_factor || null,
-    next_action: item.next_action || "建议先查看高优先级问题片段，再结合对照视频分段练习。",
+    next_action: item.next_action || "状态：问题片段已排序。操作：先看高优先级。反馈：再分段练习。",
   };
 }
 
@@ -37,30 +37,30 @@ export function buildFallbackScoreExplanation(
   const confidence = Number(detail?.report?.confidence?.score ?? detail?.confidence_score);
   const hasLowConfidence = Number.isFinite(confidence) && confidence < 0.55;
 
-  let summary = "总分由动作准确性、节奏匹配、流畅度和质量风险共同决定，建议结合问题片段复盘。";
+  let summary = "状态：总分已生成。操作：结合动作、节奏、流畅度和质量风险。反馈：形成复盘重点。";
   let mainFactor: ScoreExplanation["main_factor"] = "balanced";
   if (hasLowConfidence) {
-    summary = "当前可信度偏低，分数需要结合视频回看谨慎理解，建议先检查拍摄质量。";
+    summary = "状态：可信度偏低。操作：先检查拍摄质量并回看视频。反馈：谨慎理解分数。";
     mainFactor = "confidence";
   } else if (Number.isFinite(pose) && Number.isFinite(tempo) && tempo - pose >= 8) {
-    summary = "当前总分主要受动作空间偏差影响，节奏匹配相对较好。";
+    summary = "状态：动作空间偏差影响总分。操作：优先修动作。反馈：节奏可作为稳定项。";
     mainFactor = "pose";
   } else if (Number.isFinite(pose) && Number.isFinite(tempo) && pose - tempo >= 8) {
-    summary = "当前总分主要受节奏偏差影响，动作姿态接近度相对更稳定。";
+    summary = "状态：节奏偏差影响总分。操作：优先对齐节拍。反馈：动作姿态相对稳定。";
     mainFactor = "tempo";
   }
 
   return {
     level: null,
     summary,
-    score_note: "总分不是教师主观评分，而是基于动作、节奏、流畅度和质量风险的辅助复盘指标。",
+    score_note: "状态：总分为算法辅助。操作：结合动作、节奏和质量风险。反馈：用于复盘而非主观评分。",
     confidence_note: hasLowConfidence
-      ? "可信度较低时，建议优先检查拍摄角度、全身入镜、光照和遮挡情况。"
-      : "可信度反映姿态跟踪和对齐稳定性，不等于动作好坏。",
+      ? "状态：可信度较低。操作：检查角度、入镜、光照和遮挡。反馈：再判断分数。"
+      : "状态：可信度可用。操作：参考跟踪和对齐稳定性。反馈：不直接代表动作好坏。",
     main_factor: mainFactor,
     next_action: issueCount > 0
-      ? "下一步优先查看高优先级问题片段，再回到视频中分段练习。"
-      : "下一步可以从整体视频回看和重点关节开始复盘。",
+      ? "状态：存在问题片段。操作：先看高优先级。反馈：回到视频分段练习。"
+      : "状态：暂无明显片段。操作：回看整体视频和重点关节。反馈：确认练习方向。",
   };
 }
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import shutil
 import subprocess
 from datetime import datetime, timezone
@@ -220,6 +221,39 @@ def _parse_heartbeat(raw: str | None) -> dict[str, Any]:
     return payload if isinstance(payload, dict) else {}
 
 
+def _safe_number(value: Any) -> float | int | None:
+    if value is None:
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(number):
+        return None
+    return int(number) if number.is_integer() else number
+
+
+def _compact_latest_pipeline(task: dict[str, Any]) -> dict[str, Any]:
+    report = task.get("report") if isinstance(task.get("report"), dict) else {}
+    scores = report.get("scores") if isinstance(report.get("scores"), dict) else {}
+    confidence = report.get("confidence") if isinstance(report.get("confidence"), dict) else {}
+
+    compact = {
+        "pipeline_id": task.get("pipeline_id"),
+        "status": task.get("status"),
+        "progress": _safe_number(task.get("progress")),
+        "queued_at": task.get("queued_at"),
+        "started_at": task.get("started_at"),
+        "updated_at": task.get("updated_at"),
+        "finished_at": task.get("finished_at"),
+        "error_type": task.get("error_type"),
+        "error_message": task.get("error_message"),
+        "score_total": _safe_number(task.get("score_total") or report.get("score_0_100") or scores.get("score_total")),
+        "confidence_score": _safe_number(task.get("confidence_score") or confidence.get("score")),
+    }
+    return {key: value for key, value in compact.items() if value is not None}
+
+
 def _check_redis() -> dict[str, Any]:
     enabled = bool(settings.REDIS_URL)
     required = settings.PIPELINE_EXECUTOR == "redis_queue"
@@ -386,7 +420,7 @@ def _check_recent_pipeline_failure() -> dict[str, Any]:
             "最近一次 pipeline",
             f"{error_message}（{pipeline_id} / {error_type}）。",
             str(error_suggestion),
-            latest=latest,
+            latest=_compact_latest_pipeline(latest),
         )
     return _check(
         "recent_pipeline",
@@ -394,7 +428,7 @@ def _check_recent_pipeline_failure() -> dict[str, Any]:
         "最近一次 pipeline",
         f"最近任务状态：{status or 'unknown'}。",
         "无需处理；如果任务长时间停在运行中，再检查 Redis/Worker 或后端日志。",
-        latest=latest,
+        latest=_compact_latest_pipeline(latest),
     )
 
 

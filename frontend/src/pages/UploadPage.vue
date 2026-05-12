@@ -3,8 +3,8 @@
     <section class="surface-card page-head upload-head">
       <div class="page-head-row">
         <div>
-          <h1>素材库</h1>
-          <p class="page-subtitle">把上传、整理和带入分析放在同一个工作区，减少在多个页面之间来回切换。</p>
+          <h1>素材库 <InfoHint text="上传教师示范和学员练习，整理后可直接带入动作分析。" /></h1>
+          <p class="page-subtitle">管理素材，准备分析组合。</p>
         </div>
         <div class="action-row">
           <button class="secondary-button" :disabled="listing" @click="loadAllContext">
@@ -38,8 +38,8 @@
       <article class="surface-card upload-composer">
         <div class="panel-head compact-head">
           <div>
-            <h2>新增素材</h2>
-            <p class="helper-text">先确定角色和名称，再把视频放入素材库。新上传的结果会立即出现在右侧推荐区。</p>
+            <h2>新增素材 <InfoHint text="填写角色、名称并选择视频文件；上传后会进入素材库和推荐配对。" /></h2>
+            <p class="helper-text">选择角色、名称和视频。</p>
           </div>
         </div>
 
@@ -92,8 +92,8 @@
       <article class="surface-card upload-brief">
         <div class="panel-head compact-head">
           <div>
-            <h2>快速带入分析</h2>
-            <p class="helper-text">上传完成后，可以直接复用最近配对、系统推荐配对，或者把本次上传立刻送去分析。</p>
+            <h2>快速带入分析 <InfoHint text="可以复用最近配对、使用推荐配对，或把本次上传直接带到分析页。" /></h2>
+            <p class="helper-text">选择一组素材进入分析。</p>
           </div>
         </div>
 
@@ -133,8 +133,8 @@
     <section class="surface-card library-workspace">
       <div class="panel-head compact-head library-head">
         <div>
-          <h2>素材工作区</h2>
-          <p class="helper-text">按角色分开管理素材，常用动作集中在每一条记录里，减少视线来回跳转。</p>
+          <h2>素材工作区 <InfoHint text="素材按教师和学员分组，可打开预览、重命名、删除或直接用于分析。" /></h2>
+          <p class="helper-text">整理素材，保持可用。</p>
         </div>
         <div class="library-summary">
           <span>教师 {{ teacherItems.length }}</span>
@@ -146,13 +146,13 @@
         <article class="library-panel">
           <div class="library-panel-head">
             <strong>教师素材</strong>
-            <span class="helper-text">示范视频会优先作为分析左侧输入。</span>
+            <span class="helper-text">用于左侧示范对照。</span>
           </div>
 
           <EmptyState
             v-if="!teacherItems.length"
-            title="先上传一段教师示范视频"
-            copy="教师视频会作为对照标准。上传后，可以继续补充学员练习视频。"
+            title="教师素材为空"
+            copy="上传教师视频后可作为左侧标准输入。"
           >
             <template #actions>
               <button class="secondary-button" type="button" @click="role = 'teacher'">上传教师视频</button>
@@ -218,13 +218,13 @@
         <article class="library-panel">
           <div class="library-panel-head">
             <strong>学员素材</strong>
-            <span class="helper-text">练习视频会优先作为分析右侧输入。</span>
+            <span class="helper-text">用于右侧练习对照。</span>
           </div>
 
           <EmptyState
             v-if="!userItems.length"
-            title="再上传一段学员练习视频"
-            copy="学员视频会和教师示范配对分析。两类素材都有后，就可以开始对照。"
+            title="学员素材为空"
+            copy="上传学员视频后可与教师视频配对。"
           >
             <template #actions>
               <button class="secondary-button" type="button" @click="role = 'user'">上传学员视频</button>
@@ -296,6 +296,7 @@ import { computed, onMounted, ref } from "vue";
 import { RouterLink, useRouter } from "vue-router";
 import { absMediaUrl } from "../api/http";
 import EmptyState from "../components/EmptyState.vue";
+import InfoHint from "../components/InfoHint.vue";
 import { listPipelineTasks } from "../api/pipelines";
 import { deleteVideo, listVideos, renameVideo, uploadVideo } from "../api/videos";
 import { friendlyError } from "../utils/errors";
@@ -342,13 +343,13 @@ const canUseRecommendedPair = computed(() => Boolean(newestTeacher.value && newe
 const canUseRecentTask = computed(() => Boolean(recentTask.value?.teacher_video_id && recentTask.value?.user_video_id));
 const namePlaceholder = computed(() => (role.value === "teacher" ? "例如：教师-八拍示范01" : "例如：学员-基础练习01"));
 const inventoryHint = computed(() => {
-  if (!teacherItems.value.length) return "先补入教师示范";
-  if (!userItems.value.length) return "再补入学员练习";
-  return "已经可以直接开始对照";
+  if (!teacherItems.value.length) return "缺教师 · 去上传";
+  if (!userItems.value.length) return "缺学员 · 去上传";
+  return "素材就绪 · 可分析";
 });
 const draftState = computed(() => {
-  if (!file.value) return "当前还没有选择文件，右侧推荐区不会再拿历史素材冒充本次上传结果。";
-  return `当前将以“${roleText(role.value)}”角色入库：${file.value.name}`;
+  if (!file.value) return "未选择视频文件。";
+  return `已选择 ${file.value.name}，将作为${roleText(role.value)}入库。`;
 });
 
 function byTime(a: VideoItem, b: VideoItem) {
@@ -440,7 +441,7 @@ async function submitUpload() {
     file.value = null;
     name.value = "";
     fileInputKey.value += 1;
-    actionMessage.value = "素材已入库，素材库和推荐配对已经同步更新。";
+    actionMessage.value = "上传完成，素材库已更新。";
     await loadAllContext();
   } catch (err: any) {
     error.value = friendlyError(err, "上传失败");
@@ -473,7 +474,7 @@ async function loadAllContext() {
 
 function routeToCompare(teacherId?: string | null, userId?: string | null, pipelineId?: string | null) {
   if (!teacherId || !userId) {
-    error.value = "当前配对还不完整，请先准备教师和学员素材。";
+    error.value = "配对不完整，请补齐教师和学员素材。";
     return;
   }
   void router.push({ path: "/compare", query: { teacher: teacherId, user: userId, pipeline: pipelineId || undefined } });

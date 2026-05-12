@@ -1,18 +1,20 @@
 <template>
   <div class="list-item-card score-explain-card" v-if="scoreExplanation">
-    <strong>如何看这个分数</strong>
+    <div class="record-title-row">
+      <strong>如何看这个分数</strong>
+      <InfoHint text="评分解释来自当前报告和问题片段，只用于确定复盘顺序，不会改写评分计算。" />
+    </div>
     <span class="helper-text">{{ scoreExplanation.summary }}</span>
     <span class="helper-text">{{ scoreExplanation.next_action }}</span>
     <span class="helper-text">{{ scoreExplanation.score_note }}</span>
     <span class="helper-text" v-if="scoreExplanation.confidence_note">{{ scoreExplanation.confidence_note }}</span>
-    <span class="helper-text">动作分看空间姿态接近程度，节奏分看快慢和转场时机，可信度看姿态跟踪是否稳定。</span>
-    <span class="helper-text">AI 助教只解释已生成的结构化报告，不参与动作评分计算。</span>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed } from "vue";
 import { scoreExplanationForDetail } from "../../composables/useScoreExplanation";
+import InfoHint from "../InfoHint.vue";
 import type { PipelineResultSummaryResponse, ScoreExplanation } from "../../types/video";
 
 const props = defineProps<{
@@ -25,3 +27,11 @@ const scoreExplanation = computed(() =>
   props.explanation || scoreExplanationForDetail(props.detail, props.issueCount || 0),
 );
 </script>
+
+<style scoped>
+.record-title-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+</style>
