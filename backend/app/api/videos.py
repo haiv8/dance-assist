@@ -56,17 +56,17 @@ async def rename_video_api(video_id: str, payload: VideoRenameRequest, role: Rol
     return VideoActionResponse(
         ok=True,
         video_id=video_id,
-        message="???????",
+        message="视频已重命名",
         item=VideoItem(**item),
     )
 
 
 @router.delete("/{video_id}", response_model=VideoActionResponse)
 async def delete_video_api(video_id: str, role: RoleType):
-    deleted = delete_video(video_id=video_id, role=role)
+    delete_video(video_id=video_id, role=role)
     return VideoActionResponse(
         ok=True,
         video_id=video_id,
-        message="?????",
+        message="视频已删除",
         item=None,
     )

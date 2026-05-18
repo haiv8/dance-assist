@@ -141,12 +141,14 @@ python scripts/verify-issue-index.py
 python scripts/verify-scoring-explanation.py
 python scripts/verify-records-workspace.py
 python scripts/verify-ai-fallback.py
+python scripts/verify-media-storage-hardening.py
 ```
 
 - `verify-issue-index.py`：验证 `issues.json` 生成、读取、旧路径兼容和删除。
 - `verify-scoring-explanation.py`：验证评分解释、可信度提示和旧报告 fallback。
 - `verify-records-workspace.py`：验证记录中心聚合、问题片段归属和排序。
 - `verify-ai-fallback.py`：验证无 API Key 时本地 AI 助教 fallback。
+- `verify-media-storage-hardening.py`：验证媒体 Range 头、上传临时文件清理和视频元数据路径防护。
 
 终期答辩前可按 `docs/final-acceptance-checklist.md` 做完整验收。
 

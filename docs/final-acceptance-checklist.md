@@ -35,6 +35,7 @@ python scripts/verify-records-csv-export.py
 python scripts/verify-error-mapping.py
 python scripts/verify-export-analysis-report-md.py
 python scripts/verify-input-quality-report.py
+python scripts/verify-media-storage-hardening.py
 python scripts/verify-thesis-summary-export.py
 ```
 

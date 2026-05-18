@@ -15,6 +15,7 @@ from app.services.task_store import delete_video_record, load_video_record, list
 from app.settings import settings
 
 RoleType = Literal["teacher", "user"]
+UPLOAD_CHUNK_SIZE = 1024 * 1024
 
 
 def _copy_missing_files(src_dir: Path, dst_dir: Path) -> None:
@@ -93,6 +94,32 @@ def _base_url(role: RoleType, filename: str) -> str:
     return f"/media/{role}/{filename}"
 
 
+def _role_file_path(role: RoleType, filename: str) -> Path:
+    role_dir = (settings.UPLOADS_DIR / role).resolve()
+    path = (role_dir / filename).resolve()
+    if path == role_dir or role_dir not in path.parents:
+        raise HTTPException(status_code=400, detail="invalid video filename")
+    return path
+
+
+async def _write_upload_with_limit(file: UploadFile, dst: Path, max_bytes: int) -> int:
+    total = 0
+    try:
+        with dst.open("wb") as out:
+            while True:
+                chunk = await file.read(UPLOAD_CHUNK_SIZE)
+                if not chunk:
+                    break
+                total += len(chunk)
+                if total > max_bytes:
+                    raise HTTPException(status_code=413, detail=f"file too large, max {settings.MAX_UPLOAD_MB}MB")
+                out.write(chunk)
+    except Exception:
+        dst.unlink(missing_ok=True)
+        raise
+    return total
+
+
 def _normalize_video_to_mp4(src: Path, dst: Path) -> None:
     dst.parent.mkdir(parents=True, exist_ok=True)
     cmd = [
@@ -128,7 +155,10 @@ def _meta_to_item(meta: dict, role: RoleType) -> dict | None:
     if not video_id or not filename:
         return None
 
-    video_file = settings.UPLOADS_DIR / role / filename
+    try:
+        video_file = _role_file_path(role, filename)
+    except HTTPException:
+        return None
     if not video_file.exists():
         return None
 
@@ -161,19 +191,18 @@ async def save_upload(file: UploadFile, role: RoleType, name: str | None = None)
 
     video_path = role_dir / stored_filename
     tmp_src_path = role_dir / tmp_filename
-    data = await file.read()
     max_bytes = int(settings.MAX_UPLOAD_MB) * 1024 * 1024
-    if len(data) > max_bytes:
-        raise HTTPException(status_code=413, detail=f"file too large, max {settings.MAX_UPLOAD_MB}MB")
-    tmp_src_path.write_bytes(data)
-    _normalize_video_to_mp4(tmp_src_path, video_path)
+    written_size = await _write_upload_with_limit(file, tmp_src_path, max_bytes)
     try:
-        tmp_src_path.unlink(missing_ok=True)
+        _normalize_video_to_mp4(tmp_src_path, video_path)
     except Exception:
-        pass
+        video_path.unlink(missing_ok=True)
+        raise
+    finally:
+        tmp_src_path.unlink(missing_ok=True)
 
     uploaded_at = datetime.now(timezone.utc)
-    out_size = int(video_path.stat().st_size) if video_path.exists() else len(data)
+    out_size = int(video_path.stat().st_size) if video_path.exists() else written_size
     meta = {
         "video_id": video_id,
         "role": role,
@@ -264,7 +293,7 @@ def get_video_meta(video_id: str, role: RoleType | None = None) -> dict:
             meta = json.loads(meta_path.read_text(encoding="utf-8"))
             item = _meta_to_item(meta, r)
             if item is None:
-                break
+                continue
             save_video_record(meta)
             return {
                 "video_id": item["video_id"],
@@ -302,7 +331,8 @@ def rename_video(video_id: str, role: RoleType, name: str) -> dict:
     if not safe_name:
         raise HTTPException(status_code=400, detail="name cannot be empty")
 
-    old_path = Path(str(payload.get("video_path", "")).strip())
+    old_filename = str(payload.get("filename", "")).strip()
+    old_path = _role_file_path(role, old_filename)
     if not old_path.exists():
         raise HTTPException(status_code=404, detail="video file not found")
 

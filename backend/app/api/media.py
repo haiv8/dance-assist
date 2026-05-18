@@ -57,18 +57,21 @@ def _stream_with_range(path: Path, range_header: str | None) -> Response:
         raise HTTPException(status_code=416, detail="invalid range")
 
     start_s, end_s = raw.split("-", 1)
-    if start_s == "":
-        # suffix bytes: bytes=-500
-        suffix = int(end_s)
-        if suffix <= 0:
-            raise HTTPException(status_code=416, detail="invalid range")
-        start = max(0, file_size - suffix)
-        end = file_size - 1
-    else:
-        start = int(start_s)
-        end = int(end_s) if end_s else (file_size - 1)
-        if start > end:
-            raise HTTPException(status_code=416, detail="invalid range")
+    try:
+        if start_s == "":
+            # suffix bytes: bytes=-500
+            suffix = int(end_s)
+            if suffix <= 0:
+                raise ValueError
+            start = max(0, file_size - suffix)
+            end = file_size - 1
+        else:
+            start = int(start_s)
+            end = int(end_s) if end_s else (file_size - 1)
+            if start > end:
+                raise ValueError
+    except ValueError as exc:
+        raise HTTPException(status_code=416, detail="invalid range") from exc
 
     if start < 0 or start >= file_size:
         raise HTTPException(status_code=416, detail="range not satisfiable")
